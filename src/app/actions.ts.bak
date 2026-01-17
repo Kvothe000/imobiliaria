@@ -1,0 +1,1004 @@
+"use server";
+
+import db from "@/lib/db";
+import { revalidatePath } from "next/cache";
+import * as bcrypt from 'bcryptjs';
+import { auth } from "@/auth";
+
+export async function getProperties() {
+    try {
+        const properties = await db.property.findMany({
+            orderBy: { createdAt: 'desc' }
+        });
+        return { success: true, data: properties };
+    } catch (error) {
+        console.error("Error fetching properties:", error);
+        return { success: false, error: "Failed to fetch properties" };
+    }
+}
+
+export async function getProperty(id: number) {
+    try {
+        const property = await db.property.findUnique({
+            where: { id }
+        });
+        return { success: true, data: property };
+    } catch (error) {
+        console.error("Error fetching property:", error);
+        return { success: false, error: "Failed to fetch property" };
+    }
+}
+
+export async function getLeads() {
+    try {
+        const session = await auth();
+        const user = session?.user;
+
+        let whereClause = {};
+
+        // RBAC: If not Admin, filter leads
+        if (user && (user as any).role !== 'ADMIN') {
+            // Agent sees only assigned leads OR leads they created/own (if we had createdBy)
+            // For now, strict assignment
+            whereClause = { assignedAgentId: user.id };
+        }
+
+        const leads = await db.lead.findMany({
+            where: whereClause,
+            orderBy: { createdAt: 'desc' },
+            include: { assignedAgent: { select: { name: true, avatar: true } } } // Include owner info
+        });
+        return { success: true, data: leads };
+    } catch (error) {
+        console.error("Error fetching leads:", error);
+        return { success: false, error: "Failed to fetch leads" };
+    }
+}
+
+export async function createProperty(formData: FormData) {
+    const title = formData.get("title") as string;
+    // Reconstruct address or use provided fields
+    const street = formData.get("street") as string;
+    const number = formData.get("number") as string;
+    const neighborhood = formData.get("neighborhood") as string;
+    const city = formData.get("city") as string;
+    const state = formData.get("state") as string;
+    const address = `${street}, ${number} - ${neighborhood}, ${city}/${state}`;
+
+    const price = parseFloat(formData.get("price") as string);
+    const type = formData.get("type") as string;
+    const image = formData.get("image") as string;
+
+    // New Fields
+    const code = formData.get("code") as string;
+    const zipCode = formData.get("zipCode") as string;
+    const complement = formData.get("complement") as string;
+    const iptuPrice = parseFloat(formData.get("iptuPrice") as string) || 0;
+    const condoPrice = parseFloat(formData.get("condoPrice") as string) || 0;
+    const totalArea = parseFloat(formData.get("totalArea") as string) || 0;
+    const suites = parseInt(formData.get("suites") as string) || 0;
+    const publishOnPortals = formData.get("publishOnPortals") === "on";
+
+    const bedrooms = parseInt(formData.get("bedrooms") as string) || 0;
+    const bathrooms = parseInt(formData.get("bathrooms") as string) || 0;
+    const garage = parseInt(formData.get("garage") as string) || 0;
+    const area = parseFloat(formData.get("area") as string) || 0;
+    const description = formData.get("description") as string;
+
+    if (!title || !price || !type) {
+        return { success: false, error: "Título, Preço e Tipo são obrigatórios." };
+    }
+
+    try {
+        await db.property.create({
+            data: {
+                title,
+                address: address || "Endereço não informado", // Fallback
+                price,
+                type,
+                status: "Disponível",
+                image: image || "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=500&q=60",
+                bedrooms,
+                bathrooms,
+                garage,
+                area,
+                description,
+
+                // New Fields
+                code,
+                zipCode,
+                city,
+                state,
+                neighborhood,
+                street,
+                number,
+                complement,
+                iptuPrice,
+                condoPrice,
+                suites,
+                totalArea,
+                publishOnPortals,
+
+                gallery: [],
+            },
+        });
+
+        revalidatePath("/dashboard/properties");
+        return { success: true };
+    } catch (error) {
+        console.error("Error creating property:", error);
+        return { success: false, error: "Erro ao criar imóvel. Verifique se o código já existe." };
+    }
+}
+
+export async function updateProperty(formData: FormData) {
+    const id = parseInt(formData.get("id") as string);
+    const title = formData.get("title") as string;
+    const address = formData.get("address") as string;
+    const price = parseFloat(formData.get("price") as string);
+    const type = formData.get("type") as string;
+    const status = formData.get("status") as string;
+    const image = formData.get("image") as string;
+    const bedrooms = parseInt(formData.get("bedrooms") as string) || 0;
+    const bathrooms = parseInt(formData.get("bathrooms") as string) || 0;
+    const garage = parseInt(formData.get("garage") as string) || 0;
+    const area = parseFloat(formData.get("area") as string) || 0;
+    const description = formData.get("description") as string;
+
+    if (!id || !title || !address || !price || !type || !status) {
+        return { success: false, error: "Preencha todos os campos obrigatórios." };
+    }
+
+    try {
+        await db.property.update({
+            where: { id },
+            data: {
+                title,
+                address,
+                price,
+                type,
+                status,
+                image,
+                bedrooms,
+                bathrooms,
+                garage,
+                area,
+                description,
+            },
+        });
+
+        revalidatePath("/dashboard/properties");
+        return { success: true };
+    } catch (error) {
+        console.error("Error updating property:", error);
+        return { success: false, error: "Erro ao atualizar imóvel." };
+    }
+}
+
+export async function createLead(formData: FormData) {
+    const name = formData.get("name") as string;
+    const phone = formData.get("phone") as string;
+    const email = formData.get("email") as string;
+    const interest = formData.get("interest") as string;
+    const source = formData.get("source") as string;
+
+    if (!name || !phone) {
+        return { success: false, error: "Nome e Telefone são obrigatórios." };
+    }
+
+    try {
+        await db.lead.create({
+            data: {
+                name,
+                phone,
+                email,
+                interest,
+                source: source || "Manual",
+                status: "Novo"
+            }
+        });
+        revalidatePath("/dashboard/leads");
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: "Erro ao criar lead." };
+    }
+}
+
+export async function updateLeadStatus(id: number, status: string) {
+    try {
+        await db.lead.update({
+            where: { id },
+            data: { status }
+        });
+        revalidatePath("/dashboard/leads");
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: "Falha ao atualizar status do lead" };
+    }
+}
+
+export async function updateLead(formData: FormData) {
+    const id = parseInt(formData.get("id") as string);
+    const name = formData.get("name") as string;
+    const phone = formData.get("phone") as string;
+    const email = formData.get("email") as string;
+    const interest = formData.get("interest") as string;
+    const source = formData.get("source") as string;
+    const status = formData.get("status") as string;
+    const pipelineStage = formData.get("pipelineStage") as string;
+
+    const cpf = formData.get("cpf") as string;
+    const rg = formData.get("rg") as string;
+    const nationality = formData.get("nationality") as string;
+    const maritalStatus = formData.get("maritalStatus") as string;
+    const profession = formData.get("profession") as string;
+
+
+    try {
+        await db.lead.update({
+            where: { id },
+            data: {
+                name,
+                phone,
+                email,
+                interest,
+                source,
+                status,
+                pipelineStage,
+                cpf,
+                rg,
+                nationality,
+                maritalStatus,
+                profession
+            }
+        });
+        revalidatePath("/dashboard/leads");
+        return { success: true };
+    } catch (error) {
+        console.log(error);
+        return { success: false, error: "Erro ao atualizar lead." };
+    }
+}
+
+export async function deleteLead(id: number) {
+    try {
+        await db.lead.delete({
+            where: { id }
+        });
+        revalidatePath("/dashboard/leads");
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: "Erro ao deletar lead." };
+    }
+}
+
+export async function getDashboardStats() {
+    try {
+        const [
+            totalProperties,
+            activeProperties,
+            totalLeads,
+            portfolioValue
+        ] = await Promise.all([
+            db.property.count(),
+            db.property.count({ where: { status: 'Disponível' } }),
+            db.lead.count(),
+            db.property.aggregate({ _sum: { price: true } })
+        ]);
+
+        return {
+            success: true,
+            data: {
+                totalProperties,
+                activeProperties,
+                totalLeads,
+                portfolioValue: portfolioValue._sum.price || 0
+            }
+        };
+    } catch (error) {
+        console.error("Error fetching dashboard stats:", error);
+        return { success: false, error: "Failed to fetch stats" };
+    }
+}
+
+export async function getMatchingProperties(interest: string) {
+    if (!interest) return { success: true, data: [] };
+
+    // Simple keyword extraction (ignore small words)
+    const terms = interest.split(' ')
+        .filter(term => term.length > 3)
+        .map(term => term.trim());
+
+    if (terms.length === 0) return { success: true, data: [] };
+
+    try {
+        const properties = await db.property.findMany({
+            where: {
+                status: 'Disponível',
+                OR: terms.map(term => ({
+                    OR: [
+                        { title: { contains: term, mode: 'insensitive' } },
+                        { description: { contains: term, mode: 'insensitive' } },
+                        { type: { contains: term, mode: 'insensitive' } },
+                        { address: { contains: term, mode: 'insensitive' } }
+                    ]
+                }))
+            },
+            take: 5
+        });
+        return { success: true, data: properties };
+    } catch (error) {
+        console.error("Error matching properties:", error);
+        return { success: false, error: "Failed to match properties" };
+    }
+}
+
+function generateSlug(length = 6) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let slug = '';
+    for (let i = 0; i < length; i++) {
+        slug += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return slug;
+}
+
+export async function createSelection(propertyIds: number[] | number, leadId?: number) {
+    try {
+        const slug = generateSlug();
+
+        // Ensure propertyIds is an array
+        const ids = Array.isArray(propertyIds) ? propertyIds : [propertyIds];
+
+        await db.selection.create({
+            data: {
+                slug,
+                leadId,
+                properties: ids.map(String)
+            }
+        });
+        return { success: true, slug };
+    } catch (error) {
+        console.error("Error creating selection:", error);
+        return { success: false, error: "Failed to create selection" };
+    }
+}
+
+export async function getSelection(slug: string) {
+    try {
+        const selection = await db.selection.findUnique({
+            where: { slug }
+        });
+
+        if (!selection) return { success: false, error: "Selection not found" };
+
+        const properties = await db.property.findMany({
+            where: {
+                id: {
+                    in: selection.properties.map(Number)
+                }
+            }
+        });
+
+        return { success: true, data: properties, leadId: selection.leadId };
+    } catch (error) {
+        console.error("Error fetching selection:", error);
+        return { success: false, error: "Failed to fetch selection" };
+    }
+}
+
+export async function updateLeadStage(id: number, stage: string) {
+    try {
+        await db.lead.update({
+            where: { id },
+            data: { pipelineStage: stage }
+        });
+        revalidatePath('/dashboard/leads');
+        return { success: true };
+    } catch (error) {
+        console.error("Error updating lead stage:", error);
+        return { success: false, error: "Failed to update lead stage" };
+    }
+}
+
+export async function createAppointment(leadId: number, date: Date, notes?: string, propertyId?: number) {
+    try {
+        const appointment = await db.appointment.create({
+            data: {
+                leadId,
+                date,
+                notes,
+                propertyId,
+                status: "Agendado"
+            }
+        });
+
+        revalidatePath("/dashboard/leads");
+        return { success: true, data: appointment };
+    } catch (error) {
+        console.error("Error creating appointment:", error);
+        return { success: false, error: "Failed to create appointment" };
+    }
+}
+
+export async function getAppointments() {
+    try {
+        const appointments = await db.appointment.findMany({
+            orderBy: { date: 'asc' },
+            where: {
+                date: {
+                    gte: new Date(new Date().setHours(0, 0, 0, 0)) // Future or today only
+                }
+            },
+            include: {
+                lead: true,
+                property: true
+            },
+            take: 10 // Limit for dashboard
+        });
+        return { success: true, data: appointments };
+    } catch (error) {
+        console.error("Error fetching appointments:", error);
+        return { success: false, error: "Failed to fetch appointments" };
+    }
+}
+
+export async function getAllAppointments() {
+    try {
+        const appointments = await db.appointment.findMany({
+            orderBy: { date: 'asc' },
+            where: {
+                // Fetch all active appointments (future or past 7 days for context?)
+                // For now, let's fetch everything from today onwards + recent past
+                date: {
+                    gte: new Date(new Date().setDate(new Date().getDate() - 7))
+                }
+            },
+            include: {
+                lead: true,
+                property: true
+            },
+            take: 100
+        });
+        return { success: true, data: appointments };
+    } catch (error) {
+        console.error("Error fetching all appointments:", error);
+        return { success: false, error: "Failed to fetch all appointments" };
+    }
+}
+
+export async function createTransaction(formData: FormData) {
+    const type = formData.get("type") as string;
+    const value = parseFloat(formData.get("value") as string);
+    const commissionRate = parseFloat(formData.get("commissionRate") as string);
+    const agentName = formData.get("agentName") as string;
+    const propertyId = parseInt(formData.get("propertyId") as string);
+    const leadId = parseInt(formData.get("leadId") as string);
+
+    if (!type || !value || !commissionRate || !propertyId || !leadId) {
+        return { success: false, error: "Dados inválidos para a transação." };
+    }
+
+    const commissionValue = value * (commissionRate / 100);
+    const agentShare = commissionValue * 0.40; // 40% for agent
+    const agencyShare = commissionValue - agentShare;
+
+    try {
+        // Find User by Name to link (MVP solution until Auth context is passed)
+        const agent = await db.user.findFirst({
+            where: { name: agentName }
+        });
+
+        // Create Transaction
+        await db.transaction.create({
+            data: {
+                type,
+                value,
+                commissionRate,
+                commissionValue,
+                agentShare,
+                agencyShare,
+                agentName: agentName || "Corretor Padrão",
+                userId: agent ? agent.id : null, // LINKING USER!
+                propertyId,
+                leadId,
+                date: new Date(),
+            }
+        });
+
+        // Update Property Status
+        const newStatus = type === 'Venda' ? 'Vendido' : 'Alugado';
+        await db.property.update({
+            where: { id: propertyId },
+            data: { status: newStatus }
+        });
+
+        // Update Lead Status
+        await db.lead.update({
+            where: { id: leadId },
+            data: {
+                status: 'Fechado',
+                pipelineStage: 'Fechado' // Checking exact case
+            }
+        });
+
+        revalidatePath("/dashboard");
+        revalidatePath("/dashboard/leads");
+        revalidatePath("/dashboard/properties");
+
+        return { success: true };
+    } catch (error) {
+        console.error("Error creating transaction:", error);
+        return { success: false, error: "Erro ao registrar transação." };
+    }
+}
+
+export async function getFinancialStats() {
+    const transactions = await db.transaction.findMany({
+        orderBy: { date: 'desc' },
+        include: { property: true, lead: true },
+        take: 100 // Limit history
+    });
+
+    const totalVGV = transactions.reduce((acc: number, t: any) => acc + t.value, 0);
+    const totalCommission = transactions.reduce((acc: number, t: any) => acc + t.commissionValue, 0);
+    const agencyRevenue = transactions.reduce((acc: number, t: any) => acc + t.agencyShare, 0);
+
+    const monthlyData: Record<string, number> = transactions.reduce((acc: any, t: any) => {
+        const month = new Date(t.date).toLocaleString('pt-BR', { month: 'short' });
+        acc[month] = (acc[month] || 0) + t.agencyShare; // Charting Revenue
+        return acc;
+    }, {});
+
+    const chartData = Object.entries(monthlyData)
+        .map(([name, total]) => ({ name, total }))
+        .slice(0, 6); // Last 6 months
+
+    return {
+        totalVGV,
+        totalCommission,
+        agencyRevenue,
+        recentTransactions: transactions.slice(0, 5),
+        chartData
+    };
+}
+
+export async function getUsers() {
+    try {
+        const users = await db.user.findMany({
+            orderBy: { name: 'asc' },
+            include: {
+                _count: {
+                    select: {
+                        transactions: true,
+                        leads: true
+                    }
+                }
+            }
+        });
+        return { success: true, data: users };
+    } catch (error) {
+        console.error("Error fetching users:", error);
+        return { success: false, error: "Failed to fetch users" };
+    }
+}
+
+export async function createUser(formData: FormData) {
+    const name = formData.get("name") as string;
+    const email = formData.get("email") as string;
+    const password = formData.get("password") as string;
+    const role = formData.get("role") as string;
+
+    if (!name || !email || !password || !role) {
+        return { success: false, error: "Todos os campos são obrigatórios." };
+    }
+
+    try {
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        await db.user.create({
+            data: {
+                name,
+                email,
+                password: hashedPassword,
+                role,
+                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`
+            }
+        });
+
+        revalidatePath("/dashboard/team");
+        return { success: true };
+    } catch (error) {
+        console.error("Error creating user:", error);
+        return { success: false, error: "Erro ao criar usuário. Email pode já estar em uso." };
+    }
+}
+
+export async function getAdvancedStats() {
+    try {
+        const users = await db.user.findMany({
+            include: {
+                transactions: {
+                    where: {
+                        date: {
+                            gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) // This Month
+                        }
+                    }
+                }
+            }
+        });
+
+        // Calculate Ranking
+        const topAgents = users.map(user => {
+            const volume = user.transactions.reduce((acc, t) => acc + t.value, 0);
+            return {
+                id: user.id,
+                name: user.name,
+                image: user.avatar,
+                salesCount: user.transactions.length,
+                volume
+            };
+        }).sort((a, b) => b.volume - a.volume);
+
+        // Calculate Global Stats
+        const currentMonthRevenue = topAgents.reduce((acc, agent) => acc + agent.volume, 0);
+
+        // Sum individual goals to get Monthly Goal (Simulated for MVP)
+        const monthlyGoal = users.reduce((acc, user) => acc + (user.goal || 0), 0) || 500000; // Fallback 500k if 0
+
+        // Get total stats (reusing logic or simplified)
+        const totalStats = await getFinancialStats();
+
+        return {
+            success: true,
+            data: {
+                totalVGV: totalStats.totalVGV,
+                totalCommission: totalStats.totalCommission,
+                agencyRevenue: totalStats.agencyRevenue,
+                topAgents,
+                monthlyGoal,
+                currentMonthRevenue
+            }
+        };
+
+    } catch (error) {
+        console.error("Error fetching advanced stats:", error);
+        return { success: false, error: "Failed to fetch advanced stats" };
+    }
+}
+
+export async function getPublicProperties(filters: {
+    minPrice?: number;
+    maxPrice?: number;
+    bedrooms?: number;
+    bathrooms?: number;
+    type?: string;
+    search?: string;
+} = {}) {
+    try {
+        const whereClause: any = {
+            status: 'Disponível',
+            publishOnPortals: true
+        };
+
+        if (filters.minPrice) whereClause.price = { ...whereClause.price, gte: filters.minPrice };
+        if (filters.maxPrice) whereClause.price = { ...whereClause.price, lte: filters.maxPrice };
+        if (filters.bedrooms) whereClause.bedrooms = { gte: filters.bedrooms };
+        if (filters.bathrooms) whereClause.bathrooms = { gte: filters.bathrooms };
+        if (filters.type && filters.type !== "todos") whereClause.type = filters.type;
+
+        if (filters.search) {
+            const terms = filters.search.split(' ').filter(t => t.length > 2);
+            if (terms.length > 0) {
+                whereClause.OR = terms.map(term => ({
+                    OR: [
+                        { title: { contains: term, mode: 'insensitive' } },
+                        { description: { contains: term, mode: 'insensitive' } },
+                        { address: { contains: term, mode: 'insensitive' } },
+                        { neighborhood: { contains: term, mode: 'insensitive' } },
+                        { city: { contains: term, mode: 'insensitive' } }
+                    ]
+                }));
+            }
+        }
+
+        const properties = await db.property.findMany({
+            where: whereClause,
+            take: 20, // Increased limit for search
+            orderBy: { createdAt: 'desc' }
+        });
+        return { success: true, data: properties };
+    } catch (error) {
+        console.error("Error fetching public properties:", error);
+        return { success: false, error: "Failed to load properties" };
+    }
+}
+
+// ------------------------------------------------------------------
+// FINANCEIRO AUTOMATIZADO 💰
+// ------------------------------------------------------------------
+
+export async function getFinancialMetrics() {
+    try {
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+        // Fetch all transactions for the current month
+        const transactions = await db.transaction.findMany({
+            where: {
+                date: {
+                    gte: startOfMonth,
+                    lte: endOfMonth
+                }
+            }
+        });
+
+        // Calculate totals
+        const totalVGV = transactions.reduce((acc, t) => acc + t.value, 0);
+        const totalRevenue = transactions.reduce((acc, t) => acc + t.agencyShare, 0);
+        const totalCommissions = transactions.reduce((acc, t) => acc + t.agentShare, 0);
+        const dealCount = transactions.length;
+
+        // Fetch Company Goal (Sum of all agent goals for now, or a fixed setting)
+        const agents = await db.user.findMany({
+            where: { role: 'AGENT' },
+            select: { goal: true }
+        });
+        const companyGoal = agents.reduce((acc, a) => acc + a.goal, 0) || 1000000;
+
+        return {
+            success: true,
+            data: {
+                totalVGV,
+                totalRevenue,
+                totalCommissions,
+                dealCount,
+                companyGoal,
+                goalProgress: (totalVGV / companyGoal) * 100
+            }
+        };
+
+    } catch (error) {
+        console.error("Error fetching financial metrics:", error);
+        return { success: false, error: "Failed to fetch metrics" };
+    }
+}
+
+export async function getBrokerRanking() {
+    try {
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        // Group transactions by user
+        const ranking = await db.transaction.groupBy({
+            by: ['userId', 'agentName'],
+            where: {
+                date: { gte: startOfMonth }
+            },
+            _sum: {
+                value: true,
+                agentShare: true,
+            },
+            _count: {
+                id: true
+            },
+            orderBy: {
+                _sum: {
+                    value: 'desc'
+                }
+            }
+        });
+
+        const enrichedRanking = await Promise.all(ranking.map(async (item) => {
+            let avatar = null;
+            if (item.userId) {
+                const user = await db.user.findUnique({ where: { id: item.userId }, select: { avatar: true } });
+                avatar = user?.avatar;
+            }
+            return {
+                ...item,
+                avatar
+            };
+        }));
+
+        return { success: true, data: enrichedRanking };
+
+    } catch (error) {
+        console.error("Error fetching ranking:", error);
+        return { success: false, error: "Failed to fetch ranking" };
+    }
+}
+
+export async function updateBrokerGoal(userId: string, newGoal: number) {
+    try {
+        await db.user.update({
+            where: { id: userId },
+            data: { goal: newGoal }
+        });
+        revalidatePath('/dashboard/finance');
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: "Failed to update goal" };
+    }
+}
+
+
+export async function getSimilarProperties(excludeId: number, type?: string) {
+    try {
+        const properties = await db.property.findMany({
+            where: {
+                id: { not: excludeId },
+                type: type || undefined,
+                status: 'Disponível',
+                publishOnPortals: true
+            },
+            take: 3,
+            orderBy: { createdAt: 'desc' }
+        });
+        return { success: true, data: properties };
+    } catch (error) {
+        return { success: false, error: "Failed to load similar properties" };
+    }
+}
+
+export async function createWebLead(data: { name: string; phone: string; email: string; interest: string }) {
+    if (!data.name || !data.phone) {
+        return { success: false, error: "Nome e Telefone são obrigatórios." };
+    }
+
+    try {
+        await db.lead.create({
+            data: {
+                name: data.name,
+                phone: data.phone,
+                email: data.email || null,
+                interest: data.interest,
+                source: "Site",
+                status: "Novo",
+                pipelineStage: "new" // Matches Kanban 'new' column
+            }
+        });
+
+        // Optional: Trigger Notification (Future)
+
+        revalidatePath("/dashboard/leads");
+        return { success: true };
+    } catch (error) {
+        console.error("Error creating web lead:", error);
+        return { success: false, error: "Erro ao salvar contato." };
+    }
+}
+
+export async function getAvailablePropertiesSelect() {
+    try {
+        const properties = await db.property.findMany({
+            where: { status: 'Disponível' },
+            select: { id: true, title: true, code: true, price: true }
+        });
+        return { success: true, data: properties };
+    } catch (error) {
+        return { success: false, error: "Failed to fetch properties" };
+    }
+}
+
+export async function getAgents() {
+    try {
+        const agents = await db.user.findMany({
+            where: { role: 'AGENT' },
+            select: { id: true, name: true, avatar: true }
+        });
+        return { success: true, data: agents };
+    } catch (error) {
+        return { success: false, error: "Failed to fetch agents" };
+    }
+}
+
+// ------------------------------------------------------------------
+// AGENCIAMENTO (CAPTAÇÃO) 🕵️‍♂️
+// ------------------------------------------------------------------
+
+export async function getListings() {
+    try {
+        const session = await auth();
+        const user = session?.user;
+
+        let whereClause = {};
+        // Agent sees only their own captures
+        if (user && (user as any).role !== 'ADMIN') {
+            whereClause = { userId: user.id };
+        }
+
+        const listings = await db.listing.findMany({
+            where: whereClause,
+            orderBy: { createdAt: 'desc' },
+            include: { user: { select: { name: true, avatar: true } } }
+        });
+        return { success: true, data: listings };
+    } catch (error) {
+        return { success: false, error: "Failed to fetch listings" };
+    }
+}
+
+export async function createListing(formData: FormData) {
+    const session = await auth();
+    if (!session?.user?.id) return { success: false, error: "Unauthorized" };
+
+    const ownerName = formData.get("ownerName") as string;
+    const ownerPhone = formData.get("ownerPhone") as string;
+    const address = formData.get("address") as string;
+    const expectedValue = parseFloat(formData.get("expectedValue") as string) || 0;
+    const notes = formData.get("notes") as string;
+    const imagesJson = formData.get("images") as string;
+    const images = imagesJson ? JSON.parse(imagesJson) : [];
+
+    if (!ownerName || !address) return { success: false, error: "Nome e Endereço obrigatórios." };
+
+    try {
+        const slug = generateSlug();
+        await db.listing.create({
+            data: {
+                slug,
+                ownerName,
+                ownerPhone,
+                address,
+                expectedValue,
+                notes,
+                userId: session.user.id,
+                status: "Novo",
+                images: images
+            }
+        });
+        revalidatePath("/dashboard/agenciamento");
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: "Erro ao criar captação." };
+    }
+}
+
+export async function updateListingStatus(id: number, status: string) {
+    try {
+        await db.listing.update({
+            where: { id },
+            data: { status }
+        });
+        revalidatePath("/dashboard/agenciamento");
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: "Failed to update status" };
+    }
+}
+
+export async function promoteListingToProperty(id: number) {
+    try {
+        const listing = await db.listing.findUnique({ where: { id } });
+        if (!listing) return { success: false, error: "Listing not found" };
+
+        // Create Property from Listing
+        await db.property.create({
+            data: {
+                title: `Imóvel de ${listing.ownerName}`,
+                address: listing.address,
+                price: listing.expectedValue,
+                type: "Casa", // Default
+                status: "Disponível",
+                description: listing.notes || "Imóvel captado recentemente.",
+                image: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=500&q=60" // Placeholder
+            }
+        });
+
+        // Update Listing Status
+        await db.listing.update({
+            where: { id },
+            data: { status: "Captado" }
+        });
+
+        revalidatePath("/dashboard/agenciamento");
+        revalidatePath("/dashboard/properties");
+        return { success: true };
+
+    } catch (error) {
+        return { success: false, error: "Failed to promote listing" };
+    }
+}
+
+

@@ -1,0 +1,157 @@
+{
+    "name": "Titan Lead Qualifier",
+    "nodes": [
+        {
+            "parameters": {
+                "path": "whatsapp-webhook",
+                "responseMode": "lastNode",
+                "options": {}
+            },
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                0,
+                0
+            ],
+            "name": "WhatsApp Webhook"
+        },
+        {
+            "parameters": {
+                "model": "gpt-4-turbo",
+                "messages": {
+                    "values": [
+                        {
+                            "role": "system",
+                            "content": "Você é o Titan, concierge de luxo. (Copiar conteúdo de system_prompt.md aqui)"
+                        },
+                        {
+                            "role": "user",
+                            "content": "={{$json.body.message}}"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.openaiChatModel",
+            "typeVersion": 1,
+            "position": [
+                200,
+                0
+            ],
+            "name": "AI Concierge"
+        },
+        {
+            "parameters": {
+                "jsCode": "const content = $input.first().json.content;\nconst match = content.match(/```json\\n([\\s\\S]*?)\\n```/);\nif (match) {\n  return JSON.parse(match[1]);\n}\nreturn { action: 'CONTINUE' };"
+            },
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 1,
+            "position": [
+                400,
+                0
+            ],
+            "name": "Extract JSON"
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "string": [
+                        {
+                            "value1": "={{$json.action}}",
+                            "operation": "equal",
+                            "value2": "CREATE_LEAD"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                600,
+                0
+            ],
+            "name": "Is Qualified?"
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "http://localhost:3001/api/leads",
+                "sendBody": true,
+                "contentType": "json",
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "name",
+                            "value": "={{$json.name}}"
+                        },
+                        {
+                            "name": "interest",
+                            "value": "={{$json.interest}}"
+                        },
+                        {
+                            "name": "phone",
+                            "value": "={{$node['WhatsApp Webhook'].json.body.phone}}"
+                        },
+                        {
+                            "name": "source",
+                            "value": "Bot WhatsApp"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 1,
+            "position": [
+                800,
+                -100
+            ],
+            "name": "Send to Dashboard"
+        }
+    ],
+    "connections": {
+        "WhatsApp Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "AI Concierge",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AI Concierge": {
+            "main": [
+                [
+                    {
+                        "node": "Extract JSON",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Extract JSON": {
+            "main": [
+                [
+                    {
+                        "node": "Is Qualified?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Is Qualified?": {
+            "main": [
+                [
+                    {
+                        "node": "Send to Dashboard",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

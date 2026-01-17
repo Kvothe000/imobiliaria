@@ -1,0 +1,171 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Property {
+  id        Int      @id @default(autoincrement())
+  title     String
+  address   String
+  price     Float
+  type      String   // Apartamento, Casa, Studio
+  status    String   // Disponível, Vendido, Reservado
+  image     String?
+  gallery   String[] // Array of URLs
+  description String?
+  bedrooms  Int      @default(0)
+  suites    Int      @default(0) // New: Suites
+  bathrooms Int      @default(0)
+  garage    Int      @default(0)
+  area      Float    @default(0) // Área Útil
+  totalArea Float    @default(0) // New: Área Total
+  
+  // Endereço Estruturado (Portais)
+  zipCode        String?
+  city           String?
+  state          String?
+  neighborhood   String?
+  street         String?
+  number         String?
+  complement     String?
+  
+  // Financeiro Detalhado
+  iptuPrice      Float    @default(0)
+  condoPrice     Float    @default(0)
+  
+  // Controle
+  code           String?   @unique // REF-123
+  features       String[]  @default([])
+  publishOnPortals Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  appointments Appointment[]
+  transactions Transaction[]
+}
+
+model Lead {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String?
+  phone     String
+  source    String   // WhatsApp, Site, Indicação
+  interest  String?
+  status    String   // Novo, Em Negociação, Fechado
+  pipelineStage String @default("Novo") // Novo, Qualificação, Visita, Proposta, Fechado
+  budget    Float?   // Orçamento do Lead
+  
+  // Intelligence / Parity
+  score          Int      @default(50) // 0-100 (Cold to Hot)
+  
+  // Dados para Contrato (Pessoa Física)
+  cpf            String?
+  rg             String?
+  nationality    String?  @default("Brasileiro")
+  maritalStatus  String?  // Solteiro, Casado...
+  profession     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  appointments Appointment[]
+  transactions Transaction[]
+
+  assignedAgentId String?
+  assignedAgent   User?   @relation(fields: [assignedAgentId], references: [id])
+}
+
+model Selection {
+  id        String   @id @default(uuid())
+  slug      String   @unique
+  leadId    Int?
+  properties String[] // Storing IDs as string array for simplicity
+  createdAt DateTime @default(now())
+  expiresAt DateTime?
+}
+
+model Appointment {
+  id          Int      @id @default(autoincrement())
+  date        DateTime
+  notes       String?
+  status      String   @default("Agendado") // Agendado, Concluido, Cancelado
+  
+  leadId      Int
+  lead        Lead     @relation(fields: [leadId], references: [id])
+  
+  propertyId  Int?
+  property    Property? @relation(fields: [propertyId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Transaction {
+  id              Int      @id @default(autoincrement())
+  type            String   // SALE, RENT
+  status          String   @default("Pendente") // Pago, Pendente, Cancelado
+  value           Float    // Valor total da negociação
+  commissionRate  Float    // Porcentagem da comissão (ex: 6.0)
+  commissionValue Float    // Valor monetário da comissão
+  agencyShare     Float    // Parte da Imobiliária (R$)
+  agentShare      Float    // Parte do Corretor (R$)
+  date            DateTime @default(now())
+  
+  // Relacionamentos
+  propertyId      Int
+  property        Property @relation(fields: [propertyId], references: [id])
+  leadId          Int
+  lead            Lead     @relation(fields: [leadId], references: [id])
+  agentName       String?  // Nome do corretor (Simples por enquanto)
+  
+  userId          String?
+  user            User?    @relation(fields: [userId], references: [id])
+
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  password      String
+  role          String    @default("AGENT") // ADMIN, AGENT
+  goal          Float     @default(0)       // Meta mensal em R$
+  avatar        String?
+  
+  // Gamification
+  badges        String[]  @default([])      // JSON Strings or IDs: ["top_seller", "fast_responder"]
+  
+  leads         Lead[]
+  transactions  Transaction[]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  listings      Listing[]
+}
+
+model Listing {
+  id            Int       @id @default(autoincrement())
+  slug          String    @unique // To share capture link
+  ownerName     String
+  ownerPhone    String
+  address       String
+  expectedValue Float     @default(0)
+  status        String    @default("Novo") // Novo, Avaliação, Contrato, Captado, Perdido
+  source        String?   // Indicação, Portaria, Anúncio
+  notes         String?
+  images        String[]  @default([]) // Captação photos
+
+  // Quem está cuidando dessa captação
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
