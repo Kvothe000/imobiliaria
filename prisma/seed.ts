@@ -59,6 +59,55 @@ async function main() {
     const adminPassword = await bcrypt.hash("admin123", 10);
     const agentPassword = await bcrypt.hash("titan123", 10);
 
+    // 1.1 Create Default Pipelines
+    const buyPipeline = await prisma.pipeline.create({
+        data: {
+            name: "Jornada de Compra",
+            stages: {
+                create: [
+                    { name: "Novo Lead", order: 1 },
+                    { name: "Tentativa de Contato", order: 2 },
+                    { name: "Qualificação", order: 3 },
+                    { name: "Visita Agendada", order: 4 },
+                    { name: "Em Negociação", order: 5 },
+                    { name: "Fechamento", order: 6 },
+                ]
+            }
+        }
+    });
+
+    const sellPipeline = await prisma.pipeline.create({
+        data: {
+            name: "Captação de Imóveis",
+            stages: {
+                create: [
+                    { name: "Prospecção", order: 1 },
+                    { name: "Avaliação", order: 2 },
+                    { name: "Contrato Enviado", order: 3 },
+                    { name: "Captado / Publicado", order: 4 },
+                ]
+            }
+        }
+    });
+
+    // 1.2 Create Default Tags
+    const tagsData = [
+        { name: "Investidor", color: "#f59e0b", category: "Perfil" },
+        { name: "Primeiro Imóvel", color: "#3b82f6", category: "Motivação" },
+        { name: "Urgente", color: "#ef4444", category: "Tempo" },
+        { name: "Permuta", color: "#8b5cf6", category: "Condição" },
+        { name: "À Vista", color: "#10b981", category: "Condição" },
+    ];
+
+    for (const tag of tagsData) {
+        await prisma.tag.upsert({
+            where: { name: tag.name },
+            update: {},
+            create: tag
+        });
+    }
+
+
     // 2. CREATE USERS (BROKERS) 👥
     const adminEmail = "admin@titan.com";
     const admin = await prisma.user.create({

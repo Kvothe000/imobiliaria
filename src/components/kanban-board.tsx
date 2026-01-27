@@ -13,6 +13,7 @@ import {
     useDroppable,
     MeasuringStrategy,
 } from "@dnd-kit/core";
+import { Virtuoso } from "react-virtuoso";
 import {
     SortableContext,
     verticalListSortingStrategy,
@@ -22,12 +23,13 @@ import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { MessageSquare, GripVertical, CheckCircle2, DollarSign, Calendar, Target, User, Instagram, Globe, Phone as PhoneIcon, Users, Loader2, ArrowDown } from "lucide-react";
+import { MessageSquare, GripVertical, CheckCircle2, DollarSign, Calendar, Target, User, Instagram, Globe, Phone as PhoneIcon, Users, Loader2, ArrowDown, AlertTriangle } from "lucide-react";
 import { updateLeadStage, fetchLeadsByStage } from "@/app/actions/leads";
 import { useRouter } from "next/navigation";
 import { EditLeadModal } from "@/components/edit-lead-modal";
 import { CloseDealModal } from "@/components/dashboard/close-deal-modal";
 import { ScheduleVisitModal } from "@/components/schedule-visit-modal";
+import { LostDealModal } from "@/components/dashboard/lost-deal-modal";
 
 // --- Types ---
 interface Lead {
@@ -39,18 +41,27 @@ interface Lead {
     source: string;
     pipelineStage: string;
     email: string | null;
+    updatedAt: string | Date; // Added for Stagnation Calc
+}
+
+interface Stage {
+    id: number;
+    name: string;
+    order: number;
 }
 
 interface KanbanBoardProps {
     initialLeads: Lead[];
+    stages: Stage[]; // Dynamic Stages
 }
 
-const COLUMNS = [
-    { id: "Novo", title: "Novos", color: "bg-blue-100 text-blue-800", icon: User },
-    { id: "Qualificação", title: "Qualificação", color: "bg-purple-100 text-purple-800", icon: Target },
-    { id: "Visita", title: "Visita", color: "bg-orange-100 text-orange-800", icon: Calendar },
-    { id: "Proposta", title: "Proposta", color: "bg-yellow-100 text-yellow-800", icon: DollarSign },
-    { id: "Fechado", title: "Fechado", color: "bg-green-100 text-green-800", icon: CheckCircle2 },
+// Fallback if stages fail to load
+const DEFAULT_STAGES = [
+    { id: 1, name: "Novo", order: 1 },
+    { id: 2, name: "Em Atendimento", order: 2 },
+    { id: 3, name: "Visita Agendada", order: 3 },
+    { id: 4, name: "Proposta", order: 4 },
+    { id: 5, name: "Fechado", order: 5 },
 ];
 
 const SOURCE_CONFIG: Record<string, { color: string, icon: any, label: string }> = {
@@ -60,6 +71,20 @@ const SOURCE_CONFIG: Record<string, { color: string, icon: any, label: string }>
     "Indicação": { color: "border-l-yellow-500", icon: Users, label: "Indicação" },
     "Manual": { color: "border-l-gray-400", icon: User, label: "Manual" }
 };
+
+// --- Stagnation Logic ---
+function isStagnant(lead: Lead): boolean {
+    if (!lead.updatedAt) return false;
+    const days = (new Date().getTime() - new Date(lead.updatedAt).getTime()) / (1000 * 3600 * 24);
+
+    // Rule: "Novo" > 24h (1 day)
+    if (lead.pipelineStage === "Novo" && days > 1) return true;
+
+    // Rule: Others > 5 days (except Closed/Lost)
+    if (!["Fechado", "Perdido"].includes(lead.pipelineStage) && days > 5) return true;
+
+    return false;
+}
 
 // --- Draggable Card Component ---
 const KanbanCard = memo(function KanbanCard({ lead, onClick, isOverlay }: { lead: Lead, onClick?: (lead: Lead) => void, isOverlay?: boolean }) {
@@ -76,17 +101,15 @@ const KanbanCard = memo(function KanbanCard({ lead, onClick, isOverlay }: { lead
         transform: CSS.Transform.toString(transform),
         transition,
         opacity: isDragging ? 0.3 : 1,
-        willChange: 'transform, opacity', // GPU Optimization
+        willChange: 'transform, opacity',
     };
 
     const sourceConfig = SOURCE_CONFIG[lead.source] || SOURCE_CONFIG["Manual"];
     const SourceIcon = sourceConfig.icon;
-
-    // Visual Simplification: When dragging (but not the overlay itself), we might hide details via CSS in parent
-    // The overlay should always be full detail.
+    const stagnant = isStagnant(lead);
 
     return (
-        <div ref={setNodeRef} style={style} className="mb-3 kanban-item-wrapper">
+        <div ref={setNodeRef} style={style} className="mb-3 kanban-item-wrapper dropdown-menu-container">
             <Card
                 className={`group cursor-default hover:shadow-md transition-all border-l-4 ${sourceConfig.color} ${isDragging ? "shadow-xl ring-2 ring-primary/20" : ""} ${isOverlay ? "cursor-grabbing shadow-2xl rotate-2" : ""}`}
                 style={{ touchAction: 'pan-y' }}
@@ -106,10 +129,16 @@ const KanbanCard = memo(function KanbanCard({ lead, onClick, isOverlay }: { lead
                                     <GripVertical size={16} />
                                 </div>
                             )}
-                            <span className="font-semibold text-sm truncate text-gray-800 cursor-pointer" title={lead.name}>{lead.name}</span>
+                            <span className="font-semibold text-sm truncate text-gray-800 cursor-pointer" title={lead.name}>
+                                {lead.name}
+                            </span>
+                            {stagnant && !isOverlay && (
+                                <div className="animate-pulse" title="Lead estagnado: Sem interação recente!">
+                                    <AlertTriangle className="w-4 h-4 text-amber-500" />
+                                </div>
+                            )}
                         </div>
 
-                        {/* Detail Actions - Hidden during generic drag via CSS if needed, but here we keep them simple */}
                         {!isOverlay && (
                             <Button
                                 variant="ghost"
@@ -125,7 +154,6 @@ const KanbanCard = memo(function KanbanCard({ lead, onClick, isOverlay }: { lead
                         )}
                     </div>
 
-                    {/* Secondary Info - These will be targeted by CSS to hide during drag to save paint time */}
                     <div className="kanban-secondary-info">
                         {lead.interest && (
                             <p className="text-xs text-gray-500 mb-2 line-clamp-2 bg-gray-50 p-1 rounded cursor-pointer">
@@ -146,16 +174,16 @@ const KanbanCard = memo(function KanbanCard({ lead, onClick, isOverlay }: { lead
     );
 });
 
-// --- Droppable Column Component ---
+// --- Droppable Column Component (Virtualized) ---
 const KanbanColumn = memo(function KanbanColumn({
-    col,
+    stage,
     leadsItems,
     onClickCard,
     hasMore,
     isLoading,
     onLoadMore
 }: {
-    col: any,
+    stage: Stage,
     leadsItems: Lead[],
     onClickCard: (l: Lead) => void,
     hasMore: boolean,
@@ -163,64 +191,93 @@ const KanbanColumn = memo(function KanbanColumn({
     onLoadMore: () => void
 }) {
     const { setNodeRef } = useDroppable({
-        id: col.id,
+        id: stage.name,
     });
 
+    const getIcon = (stageName: string) => {
+        if (stageName.includes("Novo")) return User;
+        if (stageName.includes("Qualificação") || stageName.includes("Atendimento")) return Target;
+        if (stageName.includes("Visita")) return Calendar;
+        if (stageName.includes("Proposta")) return DollarSign;
+        if (stageName.includes("Fechado")) return CheckCircle2;
+        return User;
+    };
+
+    // Dynamic Colors based on Order (heuristic)
+    const getColors = (order: number) => {
+        const colors = [
+            "bg-blue-100/50 text-blue-900 dark:bg-blue-900/20 dark:text-blue-200 border-blue-200 dark:border-blue-800",
+            "bg-purple-100/50 text-purple-900 dark:bg-purple-900/20 dark:text-purple-200 border-purple-200 dark:border-purple-800",
+            "bg-orange-100/50 text-orange-900 dark:bg-orange-900/20 dark:text-orange-200 border-orange-200 dark:border-orange-800",
+            "bg-yellow-100/50 text-yellow-900 dark:bg-yellow-900/20 dark:text-yellow-200 border-yellow-200 dark:border-yellow-800",
+            "bg-green-100/50 text-green-900 dark:bg-green-900/20 dark:text-green-200 border-green-200 dark:border-green-800",
+            "bg-gray-100/50 text-gray-900 dark:bg-gray-800/40 dark:text-gray-300 border-gray-200 dark:border-gray-700"
+        ];
+        return colors[(order - 1) % colors.length];
+    }
+
+    const Icon = getIcon(stage.name);
+    const colorClass = getColors(stage.order);
+
     return (
-        <div ref={setNodeRef} className="min-w-[280px] w-[280px] md:w-[320px] flex-shrink-0 bg-gray-50/50 rounded-xl border border-gray-100 flex flex-col h-full max-h-[calc(100vh-200px)]">
-            <div className={`p-3 border-b flex items-center justify-between sticky top-0 bg-white/95 rounded-t-xl z-10`}>
+        <div ref={setNodeRef} className="min-w-[300px] w-[300px] md:w-[340px] flex-shrink-0 bg-gray-50/80 dark:bg-gray-900/50 rounded-xl border border-gray-200 dark:border-gray-800 flex flex-col h-full max-h-[calc(100vh-180px)] shadow-sm">
+            <div className={`p-3 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between sticky top-0 rounded-t-xl z-10 backdrop-blur-sm ${colorClass.split('border')[0]}`}>
                 <div className="flex items-center gap-2">
-                    <div className={`p-1.5 rounded-md ${col.color.replace('text-', 'bg-').replace('100', '100')}`}>
-                        <col.icon size={14} className={col.color.split(' ')[1]} />
+                    <div className={`p-1.5 rounded-md bg-white/50 dark:bg-black/20`}>
+                        <Icon size={14} className="opacity-80" />
                     </div>
-                    <h3 className="font-semibold text-sm text-gray-700">{col.title}</h3>
+                    <h3 className="font-bold text-sm">{stage.name}</h3>
                 </div>
-                <Badge variant="secondary" className="bg-white text-gray-500 shadow-sm border font-mono">
+                <Badge variant="secondary" className="bg-white/70 dark:bg-black/30 border-0 font-mono text-xs">
                     {leadsItems.length}
                 </Badge>
             </div>
 
             <SortableContext
-                id={col.id}
+                id={stage.name}
                 items={leadsItems.map(l => String(l.id))}
                 strategy={verticalListSortingStrategy}
             >
-                <div className="flex-1 p-2 overflow-y-auto overflow-x-hidden">
-                    {leadsItems.map((lead) => (
-                        <KanbanCard
-                            key={lead.id}
-                            lead={lead}
-                            onClick={onClickCard}
-                        />
-                    ))}
-
-                    {/* Load More Trigger */}
-                    {hasMore && (
-                        <div className="py-2 text-center">
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className="w-full text-xs text-gray-500 h-8 hover:bg-gray-100"
-                                onClick={onLoadMore}
-                                disabled={isLoading}
-                            >
-                                {isLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <ArrowDown className="w-3 h-3 mr-1" />}
-                                {isLoading ? "Carregando..." : "Carregar mais"}
-                            </Button>
-                        </div>
-                    )}
-
-                    {leadsItems.length === 0 && !hasMore && (
-                        <div className="h-[100px] flex flex-col items-center justify-center text-gray-300 text-xs border-2 border-dashed border-gray-200 m-2 rounded-lg">
-                            <span className="mb-1">Vazio</span>
-                        </div>
-                    )}
+                <div className="flex-1 overflow-hidden" style={{ minHeight: 0 }}>
+                    <Virtuoso
+                        style={{ height: '100%' }}
+                        data={leadsItems}
+                        endReached={() => hasMore && !isLoading && onLoadMore()}
+                        itemContent={(index, lead) => (
+                            <div className="px-2 pt-2 last:pb-2">
+                                <KanbanCard
+                                    key={lead.id}
+                                    lead={lead}
+                                    onClick={onClickCard}
+                                />
+                            </div>
+                        )}
+                        components={{
+                            Footer: () => (
+                                <div className="py-2 text-center">
+                                    {isLoading && <Loader2 className="w-4 h-4 animate-spin mx-auto text-primary" />}
+                                    {!isLoading && hasMore && (
+                                        <div className="h-6" /> // Trigger area
+                                    )}
+                                    {!hasMore && leadsItems.length > 5 && (
+                                        <span className="text-xs text-muted-foreground">Fim da lista</span>
+                                    )}
+                                </div>
+                            ),
+                            EmptyPlaceholder: () => (
+                                leadsItems.length === 0 && !isLoading ? (
+                                    <div className="h-[150px] flex flex-col items-center justify-center text-muted-foreground text-xs m-2 border-2 border-dashed rounded-lg">
+                                        Vazio
+                                    </div>
+                                ) : null
+                            )
+                        }}
+                    />
                 </div>
             </SortableContext>
         </div>
     );
 });
-
 
 // --- Scroll Hook ---
 function useDraggableScroll() {
@@ -259,7 +316,7 @@ function useDraggableScroll() {
 }
 
 // --- Main Board Component ---
-export function KanbanBoard({ initialLeads }: KanbanBoardProps) {
+export function KanbanBoard({ initialLeads, stages = [] }: KanbanBoardProps) {
     const [leads, setLeads] = useState<Lead[]>(initialLeads);
     const [editingLead, setEditingLead] = useState<Lead | null>(null);
     const [isEditOpen, setIsEditOpen] = useState(false);
@@ -268,19 +325,21 @@ export function KanbanBoard({ initialLeads }: KanbanBoardProps) {
     const [activeId, setActiveId] = useState<number | null>(null);
     const router = useRouter();
 
+    // Sort stages by order
+    const activeStages = (stages.length > 0 ? stages : DEFAULT_STAGES).sort((a, b) => a.order - b.order);
+
     // Pagination State
     interface ColumnPagination {
         page: number;
         hasMore: boolean;
         isLoading: boolean;
     }
+
+    // Initialize Pagination safely
     const [pagination, setPagination] = useState<Record<string, ColumnPagination>>(() => {
         const state: Record<string, ColumnPagination> = {};
-        COLUMNS.forEach(col => {
-            state[col.id] = { page: 1, hasMore: true, isLoading: false };
-            // We assume hasMore true initially unless initialLeads is empty? 
-            // Better heuristic: if initialLeads has < 20 for this column, set hasMore false.
-            // But initialLeads is flat.
+        activeStages.forEach(st => {
+            state[st.name] = { page: 1, hasMore: true, isLoading: false };
         });
         return state;
     });
@@ -290,37 +349,33 @@ export function KanbanBoard({ initialLeads }: KanbanBoardProps) {
     const [isCloseDealOpen, setIsCloseDealOpen] = useState(false);
     const [schedulingLead, setSchedulingLead] = useState<Lead | null>(null);
     const [isScheduleOpen, setIsScheduleOpen] = useState(false);
+    const [lostLead, setLostLead] = useState<Lead | null>(null);
+    const [isLostOpen, setIsLostOpen] = useState(false);
 
     const { events: scrollEvents, isDragging: isScrolling } = useDraggableScroll();
-
     const lastInitLeadsRef = useRef<string>("");
 
     useEffect(() => {
-        // Stability check to prevent infinite loops if initialLeads reference changes but content doesn't
-        // We use a simple hash of IDs and Stages
         const idsKey = initialLeads.map(l => `${l.id}-${l.pipelineStage}`).sort().join(',');
 
         if (lastInitLeadsRef.current === idsKey) return;
         lastInitLeadsRef.current = idsKey;
 
-        // 1. Update Pagination State
         setPagination(prev => {
             const next = { ...prev };
-            // Optimistic Pagination: Ensure button is visible initially
-            COLUMNS.forEach(col => {
-                next[col.id] = { ...next[col.id], hasMore: true };
+            // Ensure all stages have pagination keys
+            activeStages.forEach(st => {
+                next[st.name] = { page: 1, hasMore: true, isLoading: false }; // Always reset pagination on stage/leads change
             });
             return next;
         });
 
-        // 2. Sync Leads
         setLeads(initialLeads);
-    }, [initialLeads]);
+    }, [initialLeads, activeStages]);
 
 
-    // Derived Columns
-    const columns = COLUMNS.reduce((acc, col) => {
-        acc[col.id] = leads.filter(l => (l.pipelineStage || "Novo") === col.id);
+    const columns = activeStages.reduce((acc, st) => {
+        acc[st.name] = leads.filter(l => (l.pipelineStage || "Novo") === st.name);
         return acc;
     }, {} as Record<string, Lead[]>);
 
@@ -339,23 +394,20 @@ export function KanbanBoard({ initialLeads }: KanbanBoardProps) {
         })
     );
 
-    const handleLoadMore = async (stageId: string) => {
-        const currentPag = pagination[stageId];
-        if (!currentPag.hasMore || currentPag.isLoading) return;
+    const handleLoadMore = async (stageName: string) => {
+        const currentPag = pagination[stageName];
+        if (!currentPag?.hasMore || currentPag.isLoading) return;
 
         setPagination(prev => ({
             ...prev,
-            [stageId]: { ...prev[stageId], isLoading: true }
+            [stageName]: { ...prev[stageName], isLoading: true }
         }));
 
         try {
-            // Calculate skip. We have page 1 (initial). We want page 2.
-            // Page 1 = offset 0, take 20.
-            // Page 2 = offset 20, take 20.
-            const skip = columns[stageId].length; // More reliable than page math if leads were moved
+            const skip = columns[stageName].length;
             const take = 20;
 
-            const result = await fetchLeadsByStage(stageId, skip, take);
+            const result = await fetchLeadsByStage(stageName, skip, take);
 
             if (result.success && result.data) {
                 const newLeads = result.data as Lead[];
@@ -363,16 +415,15 @@ export function KanbanBoard({ initialLeads }: KanbanBoardProps) {
                 if (newLeads.length < take) {
                     setPagination(prev => ({
                         ...prev,
-                        [stageId]: { ...prev[stageId], hasMore: false, isLoading: false }
+                        [stageName]: { ...prev[stageName], hasMore: false, isLoading: false }
                     }));
                 } else {
                     setPagination(prev => ({
                         ...prev,
-                        [stageId]: { ...prev[stageId], isLoading: false, page: prev[stageId].page + 1 }
+                        [stageName]: { ...prev[stageName], isLoading: false, page: prev[stageName].page + 1 }
                     }));
                 }
 
-                // Append unique leads
                 setLeads(prev => {
                     const existingIds = new Set(prev.map(l => l.id));
                     const uniqueNew = newLeads.filter(l => !existingIds.has(l.id));
@@ -381,7 +432,7 @@ export function KanbanBoard({ initialLeads }: KanbanBoardProps) {
             } else {
                 setPagination(prev => ({
                     ...prev,
-                    [stageId]: { ...prev[stageId], isLoading: false }
+                    [stageName]: { ...prev[stageName], isLoading: false }
                 }));
             }
 
@@ -389,12 +440,11 @@ export function KanbanBoard({ initialLeads }: KanbanBoardProps) {
             console.error("Load more failed", error);
             setPagination(prev => ({
                 ...prev,
-                [stageId]: { ...prev[stageId], isLoading: false }
+                [stageName]: { ...prev[stageName], isLoading: false }
             }));
         }
     };
 
-    // ... Handle Drag Logic (Optimized)
     const handleDragStart = (event: DragStartEvent) => {
         setActiveId(Number(event.active.id));
     };
@@ -405,7 +455,7 @@ export function KanbanBoard({ initialLeads }: KanbanBoardProps) {
         if (!over) return;
 
         const activeId = Number(active.id);
-        const overId = over.id;
+        const overId = over.id; // Could be Stage Name or Lead ID
 
         const activeLead = leads.find(l => l.id === activeId);
         if (!activeLead) return;
@@ -413,14 +463,20 @@ export function KanbanBoard({ initialLeads }: KanbanBoardProps) {
         const sourceStage = activeLead.pipelineStage || "Novo";
         let destStage = overId as string;
 
+        // If dropped on a card, take its stage
         if (activeLead.id !== overId) {
-            const overCard = leads.find(l => String(l.id) === String(overId));
-            if (overCard) {
-                destStage = overCard.pipelineStage;
+            // Check if overId is a stage name
+            if (activeStages.some(s => s.name === overId)) {
+                destStage = overId as string;
+            } else {
+                const overCard = leads.find(l => String(l.id) === String(overId));
+                if (overCard) {
+                    destStage = overCard.pipelineStage;
+                }
             }
         }
 
-        if (!COLUMNS.some(c => c.id === destStage)) return;
+        if (!activeStages.some(c => c.name === destStage)) return;
 
         if (sourceStage !== destStage) {
             if (destStage === "Fechado") {
@@ -428,14 +484,19 @@ export function KanbanBoard({ initialLeads }: KanbanBoardProps) {
                 setIsCloseDealOpen(true);
                 return;
             }
-            if (destStage === "Visita") {
+            if (destStage === "Visita" || destStage.includes("Visita")) {
                 setSchedulingLead(activeLead);
                 setIsScheduleOpen(true);
                 return;
             }
+            if (destStage === "Perdido") {
+                setLostLead(activeLead);
+                setIsLostOpen(true);
+                return;
+            }
 
             const updatedLeads = leads.map(l =>
-                l.id === activeId ? { ...l, pipelineStage: destStage } : l
+                l.id === activeId ? { ...l, pipelineStage: destStage, updatedAt: new Date() } : l
             );
             setLeads(updatedLeads);
 
@@ -448,11 +509,11 @@ export function KanbanBoard({ initialLeads }: KanbanBoardProps) {
         }
     };
 
-    // ... Modal Handlers
     const handleScheduleSuccess = async () => {
         if (!schedulingLead) return;
-        const destStage = "Visita";
-        const updatedLeads = leads.map(l => l.id === schedulingLead.id ? { ...l, pipelineStage: destStage } : l);
+        const destStage = activeStages.find(s => s.name.includes("Visita"))?.name || "Visita Agendada";
+
+        const updatedLeads = leads.map(l => l.id === schedulingLead.id ? { ...l, pipelineStage: destStage, updatedAt: new Date() } : l);
         setLeads(updatedLeads);
         try {
             await updateLeadStage(schedulingLead.id, destStage);
@@ -462,11 +523,10 @@ export function KanbanBoard({ initialLeads }: KanbanBoardProps) {
         setSchedulingLead(null);
     };
 
-
     const [isMounted, setIsMounted] = useState(false);
     useEffect(() => { setIsMounted(true); }, []);
 
-    if (!isMounted) return <div className="p-10 text-center">Carregando Board...</div>; // Skeleton placeholder better
+    if (!isMounted) return <div className="p-10 text-center">Carregando Board...</div>;
 
     const activeLead = activeId ? leads.find(l => l.id === activeId) : null;
 
@@ -478,13 +538,6 @@ export function KanbanBoard({ initialLeads }: KanbanBoardProps) {
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
         >
-            {/* 
-                Performance Optimization: 
-                When dragging, we add a class to the wrapper.
-                Global CSS then hides .kanban-secondary-info to reduce paint / layout cost.
-                We inject a style tag for this scoped behavior or assume global styles.
-                Let's use an inline style block for simplicity and self-containment.
-             */}
             {activeId && (
                 <style dangerouslySetInnerHTML={{
                     __html: `
@@ -498,15 +551,15 @@ export function KanbanBoard({ initialLeads }: KanbanBoardProps) {
                 {...scrollEvents}
                 style={{ touchAction: 'pan-x' }}
             >
-                {COLUMNS.map((col) => (
+                {activeStages.map((stage) => (
                     <KanbanColumn
-                        key={col.id}
-                        col={col}
-                        leadsItems={columns[col.id] || []}
+                        key={stage.id}
+                        stage={stage}
+                        leadsItems={columns[stage.name] || []}
                         onClickCard={handleCardClick}
-                        hasMore={pagination[col.id]?.hasMore}
-                        isLoading={pagination[col.id]?.isLoading}
-                        onLoadMore={() => handleLoadMore(col.id)}
+                        hasMore={pagination[stage.name]?.hasMore}
+                        isLoading={pagination[stage.name]?.isLoading}
+                        onLoadMore={() => handleLoadMore(stage.name)}
                     />
                 ))}
             </div>
@@ -517,10 +570,10 @@ export function KanbanBoard({ initialLeads }: KanbanBoardProps) {
                 ) : null}
             </DragOverlay>
 
-            {/* Modals */}
             {editingLead && <EditLeadModal lead={editingLead} open={isEditOpen} setOpen={setIsEditOpen} />}
             {closingLead && <CloseDealModal isOpen={isCloseDealOpen} onClose={() => setIsCloseDealOpen(false)} leadId={closingLead.id} leadName={closingLead.name} propertyId={undefined} />}
             {schedulingLead && <ScheduleVisitModal leadId={schedulingLead.id} leadName={schedulingLead.name} leadPhone={schedulingLead.phone} open={isScheduleOpen} setOpen={setIsScheduleOpen} onSuccess={handleScheduleSuccess} />}
+            {lostLead && <LostDealModal isOpen={isLostOpen} onClose={() => setIsLostOpen(false)} leadId={lostLead.id} leadName={lostLead.name} onSuccess={() => router.refresh()} />}
         </DndContext>
     );
 }

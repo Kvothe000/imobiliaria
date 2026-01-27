@@ -1,4 +1,5 @@
 import Sidebar from "@/components/Sidebar";
+import { MobileNav } from "@/components/mobile-nav";
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,7 @@ export default function DashboardLayout({
                     {children}
                 </div>
             </main>
+            <MobileNav />
         </div>
     );
 }

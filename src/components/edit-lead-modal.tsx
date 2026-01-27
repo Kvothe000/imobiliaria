@@ -13,13 +13,17 @@ import { Label } from "@/components/ui/label";
 import { updateLead, deleteLead, createSelection } from "@/app/actions/leads";
 import { getMatchingProperties } from "@/app/actions/properties";
 import { useRouter } from "next/navigation";
-import { Trash2, Send, ExternalLink, Link2, Copy, Check, Calendar as CalendarIcon } from "lucide-react";
+import { Trash2, ExternalLink, Copy, Check, Calendar as CalendarIcon, Sparkles, Loader2 } from "lucide-react";
 import { ContractModal } from "@/components/contract-modal";
 import { CloseDealModal } from "@/components/close-deal-modal";
 import { ScheduleVisitModal } from "@/components/schedule-visit-modal";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Link from "next/link";
+import { VoiceRecorder } from "@/components/ui/voice-recorder";
+import { Textarea } from "@/components/ui/textarea";
+import { calculateLeadScore } from "@/app/actions/ai";
+import { TagManager } from "@/components/tag-manager";
 
 interface Lead {
     id: number;
@@ -35,8 +39,10 @@ interface Lead {
     nationality?: string | null;
     maritalStatus?: string | null;
     profession?: string | null;
-    pipelineStage: string;
+    pipelineStage: string; // Keep string for UI mapping
+    pipelineStageId?: number | null; // For relation
     score?: number;
+    tags?: { id: number; name: string; color: string }[];
 }
 
 interface Property {
@@ -45,9 +51,6 @@ interface Property {
     price: number;
     image: string | null;
 }
-
-import { calculateLeadScore } from "@/app/actions/ai";
-import { Loader2, Sparkles } from "lucide-react";
 
 export function EditLeadModal({ lead, open, setOpen }: { lead: Lead, open: boolean, setOpen: (open: boolean) => void }) {
     const [loading, setLoading] = useState(false);
@@ -58,9 +61,28 @@ export function EditLeadModal({ lead, open, setOpen }: { lead: Lead, open: boole
     const [leadScore, setLeadScore] = useState(lead.score || 50);
     const [calculatingScore, setCalculatingScore] = useState(false);
 
+    // Tags Logic
+    const [selectedTags, setSelectedTags] = useState<number[]>(lead.tags?.map(t => t.id) || []);
+
+    const router = useRouter();
+
     useEffect(() => {
         setLeadScore(lead.score || 50);
+        if (lead.tags) setSelectedTags(lead.tags.map(t => t.id));
     }, [lead]);
+
+    useEffect(() => {
+        if (open && lead.interest) {
+            setLoadingMatches(true);
+            getMatchingProperties(lead.interest).then(res => {
+                if (res.success && res.data) {
+                    setMatches(res.data as any);
+                }
+                setLoadingMatches(false);
+            });
+        }
+    }, [open, lead.interest]);
+
 
     const handleAiScore = async () => {
         setCalculatingScore(true);
@@ -80,22 +102,6 @@ export function EditLeadModal({ lead, open, setOpen }: { lead: Lead, open: boole
     const [copying, setCopying] = useState(false);
     const [isScheduleOpen, setIsScheduleOpen] = useState(false);
 
-    const router = useRouter();
-
-    useEffect(() => {
-        if (open && lead.interest) {
-            setLoadingMatches(true);
-            getMatchingProperties(lead.interest).then(res => {
-                if (res.success && res.data) {
-                    setMatches(res.data as any);
-                }
-                setLoadingMatches(false);
-            });
-        }
-        // Reset state when opening
-        setSelectedProperties([]);
-        setGeneratedLink(null);
-    }, [open, lead.interest]);
 
     const toggleSelection = (id: number) => {
         setSelectedProperties(prev =>
@@ -115,17 +121,13 @@ export function EditLeadModal({ lead, open, setOpen }: { lead: Lead, open: boole
         setLoading(false);
     };
 
-    const copyToClipboard = () => {
-        if (!generatedLink) return;
-        navigator.clipboard.writeText(generatedLink);
-        setCopying(true);
-        setTimeout(() => setCopying(false), 2000);
-    };
-
     async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault();
         setLoading(true);
         const formData = new FormData(event.currentTarget);
+        // Append tags manually
+        formData.append('tags', JSON.stringify(selectedTags));
+
         const result = await updateLead(formData);
 
         if (result.success) {
@@ -235,9 +237,36 @@ export function EditLeadModal({ lead, open, setOpen }: { lead: Lead, open: boole
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label htmlFor="interest">Interesse (Bairros, Características)</Label>
-                                    <Input id="interest" name="interest" defaultValue={lead.interest || ""} />
+                                    <div className="flex justify-between items-center">
+                                        <Label htmlFor="interest">Interesse / Notas</Label>
+                                        <div className="scale-75 origin-right">
+                                            <VoiceRecorder onTranscriptionComplete={(text) => {
+                                                const input = document.getElementById('interest') as HTMLInputElement;
+                                                if (input) {
+                                                    const current = input.value;
+                                                    input.value = current ? current + " | " + text : text;
+                                                }
+                                            }} />
+                                        </div>
+                                    </div>
+                                    <Textarea
+                                        id="interest"
+                                        name="interest"
+                                        defaultValue={lead.interest || ""}
+                                        className="min-h-[80px]"
+                                        placeholder="Ex: Busca apê 3 quartos, gostou da visita..."
+                                    />
                                 </div>
+
+                                {/* Tag Manager Section */}
+                                <div className="space-y-2">
+                                    <Label>Tags (Segmentação)</Label>
+                                    <TagManager
+                                        selectedTags={selectedTags}
+                                        onTagsChange={setSelectedTags}
+                                    />
+                                </div>
+
                                 <div className="space-y-2">
                                     <div className="flex justify-between items-center">
                                         <Label htmlFor="score">Temperatura do Lead (Score: {leadScore})</Label>
@@ -314,35 +343,58 @@ export function EditLeadModal({ lead, open, setOpen }: { lead: Lead, open: boole
 
                         <TabsContent value="opportunities" className="flex-1 overflow-y-auto">
                             <div className="space-y-4 py-4">
-                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 mb-4">
-                                    <h4 className="font-semibold text-blue-800 flex items-center mb-2">
-                                        <Link2 className="w-4 h-4 mr-2" />
-                                        Link Mágico (Seleção de Imóveis)
+                                <div className="bg-emerald-50 p-4 rounded-lg border border-emerald-100 mb-4 animate-in fade-in-50">
+                                    <h4 className="font-semibold text-emerald-800 flex items-center mb-2">
+                                        <Sparkles className="w-4 h-4 mr-2" />
+                                        Titan Client Portal (Experiência Premium)
                                     </h4>
-                                    <p className="text-sm text-blue-600 mb-4">
-                                        Selecione os imóveis abaixo que combinam com o perfil de {lead.name} e gere um link personalizado.
+                                    <p className="text-sm text-emerald-700 mb-4">
+                                        Gere um link exclusivo para a <strong>Área do Cliente</strong>. Lá ele verá:
+                                        <ul className="list-disc list-inside mt-1 text-xs opacity-80 pl-2">
+                                            <li>Linha do Tempo (Status da Compra) 🚀</li>
+                                            <li>Imóveis Selecionados (Lista abaixo) 🏠</li>
+                                            <li>Agenda de Visitas 📅</li>
+                                        </ul>
                                     </p>
 
                                     {generatedLink ? (
-                                        <div className="flex items-center gap-2 bg-white p-2 rounded border border-blue-200">
-                                            <code className="text-xs flex-1 text-gray-600 truncate">{generatedLink}</code>
-                                            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={copyToClipboard}>
-                                                {copying ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
-                                            </Button>
-                                            <Button size="icon" variant="ghost" className="h-8 w-8" asChild>
-                                                <Link href={generatedLink} target="_blank">
-                                                    <ExternalLink className="w-4 h-4" />
-                                                </Link>
+                                        <div className="flex flex-col gap-2">
+                                            <div className="text-xs font-semibold text-emerald-800 uppercase">Link de Acesso Gerado:</div>
+                                            <div className="flex items-center gap-2 bg-white p-2 rounded border border-emerald-200">
+                                                <code className="text-xs flex-1 text-gray-600 truncate">{generatedLink.replace('share', 'portal')}</code>
+                                                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => {
+                                                    navigator.clipboard.writeText(generatedLink.replace('share', 'portal'));
+                                                    setCopying(true);
+                                                    setTimeout(() => setCopying(false), 2000);
+                                                }}>
+                                                    {copying ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                                                </Button>
+                                                <Button size="icon" variant="ghost" className="h-8 w-8" asChild>
+                                                    <Link href={generatedLink.replace('share', 'portal')} target="_blank">
+                                                        <ExternalLink className="w-4 h-4" />
+                                                    </Link>
+                                                </Button>
+                                            </div>
+                                            <Button
+                                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                                                onClick={() => {
+                                                    const url = generatedLink.replace('share', 'portal');
+                                                    const msg = `Olá ${lead.name}, criei uma área exclusiva para você acompanhar sua jornada de compra conosco. Veja os imóveis que selecionei e seus próximos passos aqui: ${url}`;
+                                                    window.open(`https://wa.me/55${lead.phone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+                                                }}
+                                            >
+                                                Enviar convite no WhatsApp 📲
                                             </Button>
                                         </div>
                                     ) : (
                                         <Button
                                             size="sm"
-                                            className="w-full bg-blue-600 hover:bg-blue-700"
-                                            disabled={loading || selectedProperties.length === 0}
+                                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200 shadow-lg"
+                                            disabled={loading}
                                             onClick={handleGenerateLink}
                                         >
-                                            {loading ? "Gerando..." : `Gerar Link com ${selectedProperties.length} imóveis`}
+                                            {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                                            {loading ? "Gerando Portal..." : `Ativar Portal do Cliente`}
                                         </Button>
                                     )}
                                 </div>
@@ -396,10 +448,10 @@ export function EditLeadModal({ lead, open, setOpen }: { lead: Lead, open: boole
                         </TabsContent>
                     </Tabs>
                 </DialogContent>
-            </Dialog >
+            </Dialog>
 
             {/* Sub-modals */}
-            < ScheduleVisitModal
+            <ScheduleVisitModal
                 leadId={lead.id}
                 leadName={lead.name}
                 open={isScheduleOpen}

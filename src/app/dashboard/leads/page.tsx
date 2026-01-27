@@ -1,16 +1,21 @@
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
-import { getLeads } from "@/app/actions/leads";
+import { getLeads, getPipelineStages } from "@/app/actions/leads";
 import { KanbanBoard } from "@/components/kanban-board";
 import { CreateLeadModal } from "@/components/create-lead-modal";
 
 export default async function LeadsPage() {
-    const result = await getLeads();
+    const [leadsResult, stagesResult] = await Promise.all([
+        getLeads(),
+        getPipelineStages(1) // Default to Buy Pipeline
+    ]);
 
-    // Ensure pipelineStage is present, strictly typing for the component
-    const leads = result.success && result.data ? result.data.map(l => ({
+    const stages = stagesResult.success && stagesResult.data ? stagesResult.data : [];
+
+    // Ensure pipelineStage is present (Map from relation or fallback)
+    const leads = leadsResult.success && leadsResult.data ? leadsResult.data.map(l => ({
         ...l,
-        pipelineStage: (l as any).pipelineStage || 'Novo'
+        pipelineStage: l.stage?.name || 'Novo' // Use dynamic stage name
     })) : [];
 
     return (
@@ -24,7 +29,7 @@ export default async function LeadsPage() {
             </div>
 
             <div className="flex-1 min-h-0">
-                <KanbanBoard initialLeads={leads as any} />
+                <KanbanBoard initialLeads={leads as any} stages={stages} />
             </div>
         </div>
     );

@@ -155,3 +155,38 @@ export async function calculateLeadScore(leadName: string, interest: string, bud
         return { success: false, error: "Falha ao calcular score." };
     }
 }
+
+export async function calculateEstimatedPrice(details: { area: number; bedrooms: number; garage: number; type: string; location?: string }) {
+    // Mock algorithm inspired by "AVM" (Automated Valuation Models)
+    // In a real scenario, this would check a database or external API.
+
+    try {
+        const basePricePerSqm = 5000; // Base value
+        let multiplier = 1;
+
+        // Type adjustments
+        if (details.type === 'Casa') multiplier *= 1.1;
+        if (details.type === 'Apartamento') multiplier *= 1.2; // Premium condos
+        if (details.type === 'Comercial') multiplier *= 1.3;
+
+        // Bedroom premium
+        multiplier += (details.bedrooms * 0.05);
+
+        // Garage premium
+        multiplier += (details.garage * 0.08);
+
+        // Location random factor (simulating neighborhood value)
+        // In real app, use details.location
+        const locationFactor = 0.9 + (Math.random() * 0.4); // 0.9 to 1.3
+
+        let estimatedTotal = (details.area * basePricePerSqm) * multiplier * locationFactor;
+
+        // Round to nearest thousand
+        estimatedTotal = Math.round(estimatedTotal / 1000) * 1000;
+
+        return { success: true, data: estimatedTotal };
+    } catch (e) {
+        console.error(e);
+        return { success: false, error: "Calculation failed" };
+    }
+}

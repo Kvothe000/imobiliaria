@@ -20,7 +20,11 @@ export async function getLeads() {
         const leads = await db.lead.findMany({
             where: whereClause,
             orderBy: { createdAt: 'desc' },
-            include: { assignedAgent: { select: { name: true, avatar: true } } },
+            include: {
+                assignedAgent: { select: { name: true, avatar: true } },
+                tags: true,
+                stage: true // Get Stage Name
+            },
             take: 100 // OPTIMIZATION: Initial load 100 recent leads (Paginated rest)
         });
         return { success: true, data: leads };
@@ -72,7 +76,7 @@ export async function createLead(formData: FormData) {
     }
 
     try {
-        await db.lead.create({
+        const lead = await db.lead.create({
             data: {
                 name,
                 phone,
@@ -81,7 +85,15 @@ export async function createLead(formData: FormData) {
                 source: source || "Manual",
                 status: "Novo",
                 // Assign to creator if Agent (or current user)
-                assignedAgentId: userSession?.id
+                assignedAgent: userSession?.id ? { connect: { id: userSession.id } } : undefined,
+                // New Fields Mockup (Defaulting)
+                stage: {
+                    connect: {
+                        // Connect to first stage of Buy Pipeline by default (Assuming ID 1 is "Novo Lead" from seed)
+                        // In prod, fetch the default pipeline first.
+                        id: 1
+                    }
+                }
             }
         });
         revalidatePath("/dashboard/leads");
@@ -97,8 +109,6 @@ export async function createWebLead(data: { name: string; phone: string; email: 
     }
 
     try {
-        // Auto-distribution logic could go here (Round Robin)
-        // For now, unassigned
         await db.lead.create({
             data: {
                 name: data.name,
@@ -107,11 +117,11 @@ export async function createWebLead(data: { name: string; phone: string; email: 
                 interest: data.interest,
                 source: "Site",
                 status: "Novo",
-                pipelineStage: "Novo"
+                stage: {
+                    connect: { id: 1 } // Default to first stage
+                }
             }
         });
-
-        // Optional: Trigger Notification (Future)
 
         revalidatePath("/dashboard/leads");
         return { success: true };
@@ -121,35 +131,23 @@ export async function createWebLead(data: { name: string; phone: string; email: 
     }
 }
 
-export async function updateLeadStatus(id: number, status: string) {
-    try {
-        await db.lead.update({
-            where: { id },
-            data: { status }
-        });
-        revalidatePath("/dashboard/leads");
-        return { success: true };
-    } catch (error) {
-        return { success: false, error: "Falha ao atualizar status do lead" };
-    }
-}
-
 export async function updateLead(formData: FormData) {
     const id = parseInt(formData.get("id") as string);
+    // ... basic fields ...
     const name = formData.get("name") as string;
     const phone = formData.get("phone") as string;
     const email = formData.get("email") as string;
     const interest = formData.get("interest") as string;
     const source = formData.get("source") as string;
     const status = formData.get("status") as string;
-    const pipelineStage = formData.get("pipelineStage") as string;
+    // const pipelineStage = formData.get("pipelineStage") as string; // Deprecated string, use relation
 
     const cpf = formData.get("cpf") as string;
     const rg = formData.get("rg") as string;
     const nationality = formData.get("nationality") as string;
     const maritalStatus = formData.get("maritalStatus") as string;
     const profession = formData.get("profession") as string;
-
+    const tags = formData.get("tags") ? JSON.parse(formData.get("tags") as string) : [];
 
     try {
         await db.lead.update({
@@ -161,13 +159,17 @@ export async function updateLead(formData: FormData) {
                 interest,
                 source,
                 status,
-                pipelineStage,
+                // pipelineStage, // Legacy
                 cpf,
                 rg,
                 nationality,
                 maritalStatus,
                 profession,
-                score: parseInt(formData.get("score") as string) || 50
+                score: parseInt(formData.get("score") as string) || 50,
+                tags: {
+                    set: [], // Clear old
+                    connect: tags.map((tagId: number) => ({ id: tagId })) // Connect new
+                }
             }
         });
         revalidatePath("/dashboard/leads");
@@ -226,17 +228,33 @@ export async function getSelection(slug: string) {
             where: { slug }
         });
 
-        if (!selection) return { success: false, error: "Selection not found" };
+        if (!selection || !selection.leadId) return { success: false, error: "Selection not found" };
 
-        const properties = await db.property.findMany({
-            where: {
-                id: {
-                    in: selection.properties.map(Number)
+        const [properties, lead, appointments] = await Promise.all([
+            db.property.findMany({
+                where: {
+                    id: { in: selection.properties.map(Number) }
                 }
-            }
-        });
+            }),
+            db.lead.findUnique({
+                where: { id: selection.leadId },
+                include: { assignedAgent: true }
+            }),
+            db.appointment.findMany({
+                where: { leadId: selection.leadId },
+                orderBy: { date: 'asc' },
+                include: { property: true }
+            })
+        ]);
 
-        return { success: true, data: properties, leadId: selection.leadId };
+        if (!lead) return { success: false, error: "Lead not found" };
+
+        return {
+            success: true,
+            data: properties,
+            lead: lead,
+            appointments: appointments
+        };
     } catch (error) {
         console.error("Error fetching selection:", error);
         return { success: false, error: "Failed to fetch selection" };
@@ -336,5 +354,44 @@ export async function getAllAppointments() {
     } catch (error) {
         console.error("Error fetching all appointments:", error);
         return { success: false, error: "Failed to fetch all appointments" };
+    }
+}
+
+export async function getPipelineStages(pipelineId: number = 1) {
+    try {
+        const stages = await db.pipelineStage.findMany({
+            where: { pipelineId },
+            orderBy: { order: 'asc' }
+        });
+        return { success: true, data: stages };
+    } catch (error) {
+        console.error("Error fetching stages:", error);
+        return { success: false, error: "Failed to fetch stages" };
+    }
+}
+
+export async function markLeadAsLost(id: number, reason: string, notes: string) {
+    try {
+        // Find "Perdido" stage first to be safe or assuming standard naming
+        const lostStage = await db.pipelineStage.findFirst({
+            where: { name: "Perdido" }
+        });
+
+        await db.lead.update({
+            where: { id },
+            data: {
+                status: "Perdido",
+                lostReason: reason,
+                // Append notes to interest if needed, or ignore. 
+                // Let's just update stage relation
+                stage: lostStage ? { connect: { id: lostStage.id } } : undefined
+            }
+        });
+
+        revalidatePath("/dashboard/leads");
+        return { success: true };
+    } catch (error) {
+        console.error("Error marking lead as lost:", error);
+        return { success: false, error: "Failed to update lead" };
     }
 }

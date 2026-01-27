@@ -99,27 +99,45 @@ export function InstagramCardModal({ property }: InstagramCardModalProps) {
                         </div>
 
                         {/* Card Body */}
-                        <div className="flex-1 p-5 bg-white flex flex-col justify-between relative">
+                        <div className={`flex-1 p-5 flex flex-col justify-between relative transition-colors duration-500
+                            ${template === 'modern' ? 'bg-white' : ''}
+                            ${template === 'elegant' ? 'bg-[#1a1a1a] text-white' : ''}
+                            ${template === 'bold' ? 'bg-red-50' : ''}
+                        `}>
                             <div>
-                                <h2 className="text-lg font-bold text-gray-900 leading-tight mb-2">
+                                <h2 className={`text-lg font-bold leading-tight mb-2
+                                    ${template === 'elegant' ? 'text-white font-serif' : 'text-gray-900'}
+                                    ${template === 'bold' ? 'text-red-900 uppercase tracking-tighter' : ''}
+                                `}>
                                     {property.title}
                                 </h2>
-                                <div className="flex gap-3 text-xs text-gray-500 font-medium">
-                                    <span className="bg-gray-100 px-2 py-1 rounded">{property.bedrooms} Quartos</span>
-                                    <span className="bg-gray-100 px-2 py-1 rounded">{property.area}m²</span>
-                                    <span className="bg-gray-100 px-2 py-1 rounded">{property.garage} Vagas</span>
+                                <div className={`flex gap-3 text-xs font-medium
+                                     ${template === 'elegant' ? 'text-gray-400' : 'text-gray-500'}
+                                `}>
+                                    <span className={`px-2 py-1 rounded ${template === 'elegant' ? 'bg-white/10' : 'bg-gray-100'}`}>{property.bedrooms} Quartos</span>
+                                    <span className={`px-2 py-1 rounded ${template === 'elegant' ? 'bg-white/10' : 'bg-gray-100'}`}>{property.area}m²</span>
+                                    <span className={`px-2 py-1 rounded ${template === 'elegant' ? 'bg-white/10' : 'bg-gray-100'}`}>{property.garage} Vagas</span>
                                 </div>
                             </div>
 
-                            <div className="pt-3 border-t border-gray-100 flex justify-between items-center">
+                            <div className={`pt-3 border-t flex justify-between items-center
+                                ${template === 'elegant' ? 'border-white/10' : 'border-gray-100'}
+                                ${template === 'bold' ? 'border-red-200' : ''}
+                            `}>
                                 <div className="flex items-center gap-2">
                                     {/* Fake Logo */}
-                                    <div className="w-6 h-6 bg-gray-900 rounded-full flex items-center justify-center text-[8px] text-white font-bold">
+                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold
+                                        ${template === 'modern' ? 'bg-gray-900 text-white' : ''}
+                                        ${template === 'elegant' ? 'bg-white text-black' : ''}
+                                        ${template === 'bold' ? 'bg-red-600 text-white' : ''}
+                                    `}>
                                         Ti
                                     </div>
-                                    <span className="text-xs font-bold text-gray-900">Titan Imóveis</span>
+                                    <span className={`text-xs font-bold
+                                         ${template === 'elegant' ? 'text-white' : 'text-gray-900'}
+                                    `}>Titan Imóveis</span>
                                 </div>
-                                <span className="text-[10px] text-gray-400">Ref: {property.id}</span>
+                                <span className="text-[10px] opacity-50">Ref: {property.id}</span>
                             </div>
                         </div>
                     </div>

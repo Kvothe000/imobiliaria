@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Pencil, Sparkles } from "lucide-react";
 import { updateProperty } from "@/app/actions/properties";
+import { PriceEstimator } from "./properties/price-estimator";
 import {
     Select,
     SelectContent,
@@ -98,7 +99,22 @@ export function EditPropertyModal({ property, children }: { property: Property, 
                         <div className="grid grid-cols-2 gap-4">
                             <div className="grid gap-2">
                                 <Label htmlFor="price">Preço (R$)</Label>
-                                <Input id="price" name="price" type="number" step="0.01" defaultValue={property.price} required />
+                                <div className="space-y-1">
+                                    <Input id="price" name="price" type="number" step="0.01" defaultValue={property.price} required />
+                                    <PriceEstimator
+                                        propertyDetails={{
+                                            area: property.area,
+                                            bedrooms: property.bedrooms,
+                                            garage: property.garage,
+                                            type: property.type,
+                                            location: property.address
+                                        }}
+                                        onPriceEstimated={(price) => {
+                                            const priceInput = document.getElementById('price') as HTMLInputElement;
+                                            if (priceInput) priceInput.value = price.toString();
+                                        }}
+                                    />
+                                </div>
                             </div>
                             <div className="grid gap-2">
                                 <Label htmlFor="area">Área (m²)</Label>
