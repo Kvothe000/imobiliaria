@@ -36,6 +36,7 @@ interface Lead {
     maritalStatus?: string | null;
     profession?: string | null;
     pipelineStage: string;
+    score?: number;
 }
 
 interface Property {
@@ -45,10 +46,33 @@ interface Property {
     image: string | null;
 }
 
+import { calculateLeadScore } from "@/app/actions/ai";
+import { Loader2, Sparkles } from "lucide-react";
+
 export function EditLeadModal({ lead, open, setOpen }: { lead: Lead, open: boolean, setOpen: (open: boolean) => void }) {
     const [loading, setLoading] = useState(false);
     const [matches, setMatches] = useState<Property[]>([]);
     const [loadingMatches, setLoadingMatches] = useState(false);
+
+    // Score Logic
+    const [leadScore, setLeadScore] = useState(lead.score || 50);
+    const [calculatingScore, setCalculatingScore] = useState(false);
+
+    useEffect(() => {
+        setLeadScore(lead.score || 50);
+    }, [lead]);
+
+    const handleAiScore = async () => {
+        setCalculatingScore(true);
+        // Mock budget for now or extract from interest string if possible
+        const result = await calculateLeadScore(lead.name, lead.interest || "", 0);
+        if (result.success && result.data !== undefined) {
+            setLeadScore(result.data);
+        } else {
+            alert("Erro ao calcular score");
+        }
+        setCalculatingScore(false);
+    };
 
     // Selection Logic
     const [selectedProperties, setSelectedProperties] = useState<number[]>([]);
@@ -214,6 +238,37 @@ export function EditLeadModal({ lead, open, setOpen }: { lead: Lead, open: boole
                                     <Label htmlFor="interest">Interesse (Bairros, Características)</Label>
                                     <Input id="interest" name="interest" defaultValue={lead.interest || ""} />
                                 </div>
+                                <div className="space-y-2">
+                                    <div className="flex justify-between items-center">
+                                        <Label htmlFor="score">Temperatura do Lead (Score: {leadScore})</Label>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={handleAiScore}
+                                            disabled={calculatingScore}
+                                            className="text-xs text-purple-600 hover:bg-purple-50"
+                                        >
+                                            {calculatingScore ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3 mr-1" />}
+                                            {calculatingScore ? "Calculando..." : "Calcular com IA"}
+                                        </Button>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <span className="text-xs text-blue-500 font-bold">Frio</span>
+                                        <input
+                                            type="range"
+                                            name="score"
+                                            id="score"
+                                            min="0"
+                                            max="100"
+                                            value={leadScore}
+                                            onChange={(e) => setLeadScore(parseInt(e.target.value))}
+                                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                                        />
+                                        <span className="text-xs text-red-500 font-bold">Quente</span>
+                                    </div>
+                                    <input type="hidden" name="score" value={leadScore} />
+                                </div>
                                 <div className="grid grid-cols-3 gap-4">
                                     <div className="space-y-2">
                                         <Label htmlFor="status">Status</Label>
@@ -341,10 +396,10 @@ export function EditLeadModal({ lead, open, setOpen }: { lead: Lead, open: boole
                         </TabsContent>
                     </Tabs>
                 </DialogContent>
-            </Dialog>
+            </Dialog >
 
             {/* Sub-modals */}
-            <ScheduleVisitModal
+            < ScheduleVisitModal
                 leadId={lead.id}
                 leadName={lead.name}
                 open={isScheduleOpen}

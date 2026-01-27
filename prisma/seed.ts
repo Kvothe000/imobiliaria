@@ -26,13 +26,11 @@ const FEATURES_POOL = [
 const IMAGE_BANK = [
     "1613490493576-7fde63acd811", "1600210492486-724fe5c67fb0",
     "1600566753190-17f0baa2a6c3", "1600607687939-ce8a6c25118c",
-    "1600566752355-35792bedcfe1", "1512917774080-9991f1c4c750",
-    "1600607687644-c7171b42498f", "1600585154340-be6161a56a0c",
-    "1600566753086-00f18fb6b3ea", "1600596542815-e32c21216af3",
-    "1600210491892-03d54cc0adc0", "1600566753151-384129cf4e3e",
+    "1512917774080-9991f1c4c750", "1600607687644-c7171b42498f",
+    "1600585154340-be6161a56a0c", "1600566753086-00f18fb6b3ea",
+    "1600566753151-384129cf4e3e",
     "1600607687920-4e2a09cf159d", "1560448204-e02f11c3d0e2",
-    "1600585154526-990dced4db0d", "1600566752258-a309e25d2a93",
-    "1600607688583-e7fc239f5068", "1600566753376-12c8ab7fb75b"
+    "1600585154526-990dced4db0d", "1600566753376-12c8ab7fb75b"
 ];
 
 function getRandomItems<T>(arr: T[], count: number): T[] {
@@ -127,7 +125,11 @@ async function main() {
                 iptuPrice: Math.floor(price * 0.001),
                 condoPrice: Math.floor(price * 0.0005),
                 publishOnPortals: Math.random() > 0.5,
-                features: getRandomItems(FEATURES_POOL, 5)
+                features: getRandomItems(FEATURES_POOL, 5),
+                // Porto Alegre Coordinates with random variance
+                latitude: -30.0346 + (Math.random() - 0.5) * 0.05,
+                longitude: -51.2177 + (Math.random() - 0.5) * 0.05,
+                createdAt: new Date(Date.now() - Math.floor(Math.random() * 40 * 24 * 60 * 60 * 1000)) // 0-40 days old (mix of New and Old)
             }
         });
         properties.push(prop);

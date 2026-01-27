@@ -166,7 +166,8 @@ export async function updateLead(formData: FormData) {
                 rg,
                 nationality,
                 maritalStatus,
-                profession
+                profession,
+                score: parseInt(formData.get("score") as string) || 50
             }
         });
         revalidatePath("/dashboard/leads");

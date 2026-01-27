@@ -32,6 +32,8 @@ model Property {
   street         String?
   number         String?
   complement     String?
+  latitude       Float?   // New: Map Coordinate
+  longitude      Float?   // New: Map Coordinate
   
   // Financeiro Detalhado
   iptuPrice      Float    @default(0)

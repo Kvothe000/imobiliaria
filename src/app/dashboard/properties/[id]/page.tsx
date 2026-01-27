@@ -8,6 +8,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SocialShareCard } from "@/components/properties/social-share-card";
 import { EditPropertyModal } from "@/components/edit-property-modal";
+import { InstagramCardModal } from "@/components/properties/instagram-card-modal";
 
 export default async function PropertyDetailsPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
@@ -41,6 +42,7 @@ export default async function PropertyDetailsPage({ params }: { params: Promise<
                     <Button variant="outline" size="icon">
                         <Heart className="w-4 h-4" />
                     </Button>
+                    <InstagramCardModal property={property} />
                     <EditPropertyModal property={property as any}>
                         <Button>
                             Editar Imóvel

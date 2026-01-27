@@ -19,11 +19,18 @@ export default async function PublicHomePage() {
                         <h2 className="text-3xl font-bold tracking-tight text-slate-900">Destaques Recentes</h2>
                         <p className="text-muted-foreground mt-1">Imóveis selecionados especialmente para você.</p>
                     </div>
-                    <Link href="/imoveis">
-                        <Button variant="ghost" className="gap-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50">
-                            Ver todos <MoveRight className="h-4 w-4" />
-                        </Button>
-                    </Link>
+                    <div className="flex gap-2">
+                        <Link href="/busca">
+                            <Button variant="outline" className="gap-2 border-emerald-600 text-emerald-600 hover:bg-emerald-50">
+                                🗺️ Busca no Mapa
+                            </Button>
+                        </Link>
+                        <Link href="/imoveis">
+                            <Button variant="ghost" className="gap-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50">
+                                Ver todos <MoveRight className="h-4 w-4" />
+                            </Button>
+                        </Link>
+                    </div>
                 </div>
 
                 {success && properties && properties.length > 0 ? (

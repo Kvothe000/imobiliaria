@@ -216,6 +216,7 @@ export async function getPublicProperties(filters: {
     bathrooms?: number;
     type?: string;
     search?: string;
+    features?: string[]; // Add features support
 } = {}) {
     try {
         const whereClause: any = {
@@ -228,6 +229,13 @@ export async function getPublicProperties(filters: {
         if (filters.bedrooms) whereClause.bedrooms = { gte: filters.bedrooms };
         if (filters.bathrooms) whereClause.bathrooms = { gte: filters.bathrooms };
         if (filters.type && filters.type !== "todos") whereClause.type = filters.type;
+
+        // Features Filter (Must have ALL selected features)
+        if (filters.features && filters.features.length > 0) {
+            whereClause.features = {
+                hasEvery: filters.features
+            };
+        }
 
         if (filters.search) {
             const terms = filters.search.split(' ').filter(t => t.length > 2);
@@ -246,7 +254,7 @@ export async function getPublicProperties(filters: {
 
         const properties = await db.property.findMany({
             where: whereClause,
-            take: 20, // Increased limit for search
+            take: 20,
             orderBy: { createdAt: 'desc' }
         });
         return { success: true, data: properties };

@@ -110,3 +110,48 @@ export async function generateInstagramCaption(propertyTitle: string, propertyAd
         return { success: false, error: "Falha ao gerar legenda." };
     }
 }
+
+export async function calculateLeadScore(leadName: string, interest: string, budget: number) {
+    if (!process.env.OPENAI_API_KEY) {
+        return { success: false, error: "Chave da API OpenAI não configurada." };
+    }
+
+    try {
+        const openai = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY,
+        });
+
+        const response = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+                {
+                    role: "system",
+                    content: `Você é uma IA analista de vendas.
+                    Analise o perfil do lead e retorne APENAS um número inteiro de 0 a 100 indicando a temperatura do lead (Score).
+                    
+                    Critérios:
+                    - 0-20: Frio (Curioso, sem orçamento definido)
+                    - 21-50: Morno (Interessado, pesquisando)
+                    - 51-79: Quente (Orçamento compatível, urgência)
+                    - 80-100: Pegando Fogo (Dinheiro na mão, decisão imediata)
+                    
+                    Seja conservador. Se faltar dados, dê uma nota média baixa (30-40).`
+                },
+                {
+                    role: "user",
+                    content: `Lead: ${leadName}. Interesse: ${interest}. Orçamento Estimado (se houver): ${budget || 'Não informado'}`
+                }
+            ],
+            temperature: 0.5,
+        });
+
+        const scoreStr = response.choices[0].message.content?.replace(/\D/g, '') || "50";
+        const score = Math.max(0, Math.min(100, parseInt(scoreStr)));
+
+        return { success: true, data: score };
+
+    } catch (error) {
+        console.error("Error calculating score:", error);
+        return { success: false, error: "Falha ao calcular score." };
+    }
+}

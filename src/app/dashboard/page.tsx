@@ -9,6 +9,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FinancialStats } from "@/components/financial-stats";
+import { GamificationWidget } from "@/components/dashboard/gamification-widget";
 
 export default async function DashboardPage() {
     // 1. Fetch Parallel Data
@@ -127,49 +128,52 @@ export default async function DashboardPage() {
                             </CardContent>
                         </Card>
 
-                        {/* Upcoming Appointments */}
-                        <Card className="col-span-3 border-emerald-100 shadow-sm">
-                            <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                <CardTitle className="text-emerald-950">Próximos Compromissos 📅</CardTitle>
-                                <Link href="/dashboard/appointments" className="text-xs text-emerald-600 hover:text-emerald-700 font-medium">
-                                    Ver Agenda &rarr;
-                                </Link>
-                            </CardHeader>
-                            <CardContent>
-                                {appointments.length > 0 ? (
-                                    <div className="space-y-4">
-                                        {appointments.map((apt) => (
-                                            <div key={apt.id} className="flex items-start gap-3 p-3 rounded-lg bg-emerald-50/50 border border-emerald-100 hover:bg-emerald-50 transition-colors">
-                                                <div className="flex flex-col items-center bg-white p-2 rounded border border-emerald-100 min-w-[50px]">
-                                                    <span className="text-xs font-bold text-emerald-600 uppercase">
-                                                        {format(new Date(apt.date), 'MMM', { locale: ptBR })}
-                                                    </span>
-                                                    <span className="text-lg font-bold text-gray-800 leading-none">
-                                                        {format(new Date(apt.date), 'dd')}
-                                                    </span>
-                                                </div>
-                                                <div className="space-y-1 flex-1">
-                                                    <div className="flex justify-between items-start">
-                                                        <p className="text-sm font-bold text-gray-800">{apt.lead.name}</p>
-                                                        <Badge variant="secondary" className="text-[10px] bg-white text-gray-500 border-gray-200">
-                                                            {format(new Date(apt.date), 'HH:mm')}
-                                                        </Badge>
+                        <div className="col-span-3 space-y-4">
+                            <GamificationWidget />
+
+                            <Card className="border-emerald-100 shadow-sm">
+                                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                    <CardTitle className="text-emerald-950">Próximos Compromissos 📅</CardTitle>
+                                    <Link href="/dashboard/appointments" className="text-xs text-emerald-600 hover:text-emerald-700 font-medium">
+                                        Ver Agenda &rarr;
+                                    </Link>
+                                </CardHeader>
+                                <CardContent>
+                                    {appointments.length > 0 ? (
+                                        <div className="space-y-4">
+                                            {appointments.map((apt) => (
+                                                <div key={apt.id} className="flex items-start gap-3 p-3 rounded-lg bg-emerald-50/50 border border-emerald-100 hover:bg-emerald-50 transition-colors">
+                                                    <div className="flex flex-col items-center bg-white p-2 rounded border border-emerald-100 min-w-[50px]">
+                                                        <span className="text-xs font-bold text-emerald-600 uppercase">
+                                                            {format(new Date(apt.date), 'MMM', { locale: ptBR })}
+                                                        </span>
+                                                        <span className="text-lg font-bold text-gray-800 leading-none">
+                                                            {format(new Date(apt.date), 'dd')}
+                                                        </span>
                                                     </div>
-                                                    <p className="text-xs text-gray-600 line-clamp-1">
-                                                        {apt.property ? `Visita: ${apt.property.title}` : `Novo agendamento`}
-                                                    </p>
+                                                    <div className="space-y-1 flex-1">
+                                                        <div className="flex justify-between items-start">
+                                                            <p className="text-sm font-bold text-gray-800">{apt.lead.name}</p>
+                                                            <Badge variant="secondary" className="text-[10px] bg-white text-gray-500 border-gray-200">
+                                                                {format(new Date(apt.date), 'HH:mm')}
+                                                            </Badge>
+                                                        </div>
+                                                        <p className="text-xs text-gray-600 line-clamp-1">
+                                                            {apt.property ? `Visita: ${apt.property.title}` : `Novo agendamento`}
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-10 text-gray-400 bg-gray-50 rounded-lg border border-dashed">
-                                        <p className="text-sm">Nenhuma visita agendada.</p>
-                                        <p className="text-xs mt-1">Use o Kanban para agendar.</p>
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-10 text-gray-400 bg-gray-50 rounded-lg border border-dashed">
+                                            <p className="text-sm">Nenhuma visita agendada.</p>
+                                            <p className="text-xs mt-1">Use o Kanban para agendar.</p>
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        </div>
                     </div>
                 </TabsContent>
 
