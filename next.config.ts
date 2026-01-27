@@ -8,6 +8,8 @@ const withPWA = require("next-pwa")({
 });
 
 const nextConfig: NextConfig = {
+  // Fix for Next.js 16 Turbopack conflict with next-pwa
+  turbopack: {},
   images: {
     remotePatterns: [
       {

@@ -117,8 +117,9 @@ export async function createWebLead(data: { name: string; phone: string; email: 
                 interest: data.interest,
                 source: "Site",
                 status: "Novo",
+                // Connect to the first found stage instead of hardcoded ID 1
                 stage: {
-                    connect: { id: 1 } // Default to first stage
+                    connect: { id: (await db.pipelineStage.findFirst({ orderBy: { order: 'asc' } }))?.id || 1 }
                 }
             }
         });

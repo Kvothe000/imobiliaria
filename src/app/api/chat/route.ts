@@ -6,7 +6,7 @@ export const maxDuration = 30;
 export async function POST(req: Request) {
     const { messages } = await req.json();
 
-    const result = streamText({
+    const result = await streamText({
         model: openai('gpt-4o-mini'),
         system: `Você é o Titan Agent, um concierge virtual de ultra-luxo da imobiliária "Titan Real Estate".
     
@@ -29,5 +29,5 @@ export async function POST(req: Request) {
         messages,
     });
 
-    return result.toDataStreamResponse();
+    return result.toTextStreamResponse();
 }

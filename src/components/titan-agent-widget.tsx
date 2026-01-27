@@ -1,6 +1,6 @@
 "use client";
 
-import { useChat } from "ai/react";
+import { useChat } from "@ai-sdk/react";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ export function TitanAgentWidget() {
     const [isOpen, setIsOpen] = useState(false);
     const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
         api: '/api/chat',
-    });
+    } as any) as any;
     const scrollRef = useRef<HTMLDivElement>(null);
 
     // Auto-scroll to bottom
@@ -60,7 +60,7 @@ export function TitanAgentWidget() {
 
                             <CardContent className="flex-1 p-0 overflow-hidden bg-gray-50/50 dark:bg-black/40 backdrop-blur-sm">
                                 <ScrollArea ref={scrollRef} className="h-full p-4 overflow-y-auto">
-                                    {messages.length === 0 && (
+                                    {(!messages || messages.length === 0) && (
                                         <div className="h-full flex flex-col items-center justify-center text-center p-4 text-gray-400 space-y-3 opacity-80">
                                             <Bot size={40} className="mb-2 text-primary/40" />
                                             <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Olá! Sou a IA da Titan.</p>
@@ -77,7 +77,7 @@ export function TitanAgentWidget() {
                                     )}
 
                                     <div className="space-y-4">
-                                        {messages.map((m) => (
+                                        {(messages || []).map((m: any) => (
                                             <div
                                                 key={m.id}
                                                 className={`flex w-full ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -95,8 +95,8 @@ export function TitanAgentWidget() {
 
                                                     <div
                                                         className={`rounded-2xl px-4 py-2.5 text-sm shadow-sm ${m.role === 'user'
-                                                                ? 'bg-blue-600 text-white rounded-tr-sm'
-                                                                : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 border border-gray-100 dark:border-gray-700 rounded-tl-sm'
+                                                            ? 'bg-blue-600 text-white rounded-tr-sm'
+                                                            : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 border border-gray-100 dark:border-gray-700 rounded-tl-sm'
                                                             }`}
                                                     >
                                                         {m.content}
